@@ -52,6 +52,7 @@ async function send(payload) {
   catch (e) { notice = 'Could not send: ' + e.message + '. Check your connection and try again.'; render(); }
 }
 
+let lastCards = null, lastSummary = null;
 function render() {
   const now = Date.now();
   const states = deriveState(messages, { now, escalateAfterMs: ESCALATE_MS });
@@ -69,14 +70,17 @@ function render() {
   }
   $('#net').innerHTML = online ? '' : '<span class="off">offline - changes will not send</span>';
   $('#notice').textContent = notice;
-  $('#summary').innerHTML = `
+  const summaryHtml = `
     <div><b>${sum.acked}/${sum.total}</b><small>acknowledged</small></div>
     <div class="${sum.escalated ? 'bad' : ''}"><b>${sum.escalated}</b><small>not acknowledged in time</small></div>
     <div><b>${sum.openTasks}</b><small>open tasks</small></div>
     <div class="grow"><div class="bar"><i style="width:${sum.total === 0 ? 0 : Math.round(sum.ackRate * 100)}%"></i></div><small>${sum.total === 0 ? 'no cards yet' : sum.awaiting === 0 ? 'all cards acknowledged' : sum.awaiting + ' awaiting acknowledgement'}</small></div>
     ${me.role === 'out' ? '<button id="seed" class="ghost">Load fictional demo ward</button>' : ''}`;
-  $('#cards').innerHTML = states.length ? states.map(cardHtml).join('')
+  if (summaryHtml !== lastSummary) { lastSummary = summaryHtml; $('#summary').innerHTML = summaryHtml; }
+  const cardsHtml = states.length ? states.map(cardHtml).join('')
     : `<p class="empty">No handover cards yet. ${me.role === 'out' ? 'Add one with the form, or load the fictional demo ward.' : 'Cards appear here as soon as the outgoing nurse posts them.'}</p>`;
+  // The 1s tick must not rebuild the DOM when nothing changed, or a half-typed read-back is wiped.
+  if (cardsHtml !== lastCards) { lastCards = cardsHtml; $('#cards').innerHTML = cardsHtml; }
 }
 
 function cardHtml(s) {
