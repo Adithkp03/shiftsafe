@@ -1,4 +1,4 @@
-import { buildCard, completeness, deriveState, shiftSummary, prioritise, needsAttention, shiftReportText, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
+import { buildCard, completeness, deriveState, shiftSummary, prioritise, needsAttention, shiftReportText, timingText, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
 import { createTransport } from './transport.js';
 import { SEED } from './seed.js';
 
@@ -71,6 +71,7 @@ function render() {
       <span class="who">${esc(me.name)} · ${me.role === 'out' ? 'outgoing' : 'incoming'}</span></header>
     <div id="notice" role="alert"></div>
     <section class="summary" id="summary"></section>
+    <p class="hint">"Not acknowledged in time" is a visual flag only. ShiftSafe sends no alert or notification to anyone.</p>
     <div class="cols"><section class="cards" id="cards" aria-live="polite"></section>
     ${me.role === 'out' ? formHtml() : '<aside class="side"><h3>How to take over</h3><p>Open each card, then type the key points back in your own words and press <b>Acknowledge</b>. Your name and text are recorded. The app records that a read-back was typed; it cannot judge whether it is right.</p></aside>'}</div>`;
     wireStatic();
@@ -85,7 +86,7 @@ function render() {
     <div class="acts"><button id="attn" class="ghost" aria-pressed="${attentionOnly}">${attentionOnly ? 'Showing: needs attention - show all' : 'Show only cards needing attention'}</button><button id="dl" class="ghost">Download shift report</button>
     ${me.role === 'out' ? '<button id="seed" class="ghost">Load fictional demo ward</button>' : ''}</div>`;
   if (summaryHtml !== lastSummary) { lastSummary = summaryHtml; $('#summary').innerHTML = summaryHtml; }
-  const cardsHtml = states.length ? states.map(cardHtml).join('')
+  const cardsHtml = states.length ? states.map((x) => cardHtml(x, now)).join('')
     : `<p class="empty">No handover cards yet. ${me.role === 'out' ? 'Add one with the form, or load the fictional demo ward.' : 'Cards appear here as soon as the outgoing nurse posts them.'}</p>`;
   // The 1s tick must not rebuild the DOM when nothing changed, or a half-typed read-back is wiped.
   if (cardsHtml !== lastCards) {
@@ -104,7 +105,7 @@ function render() {
   }
 }
 
-function cardHtml(s) {
+function cardHtml(s, now) {
   const c = s.card;
   const canAck = me.role === 'in' && !s.acknowledgedBy.includes(me.userId);
   const tasks = c.pendingTasks.map((t) => { const open = s.openTasks.some((o) => o.id === t.id); return `<li class="${open ? '' : 'done'}"><label><input type="checkbox" data-task="${esc(c.cardId)}|${esc(t.id)}" ${open ? '' : 'checked disabled'}> ${esc(t.text)}</label></li>`; }).join('');
@@ -115,7 +116,7 @@ function cardHtml(s) {
     <dl><dt>Situation</dt><dd>${esc(c.situation)}</dd><dt>Background</dt><dd>${esc(c.background)}</dd>
     <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (written by outgoing nurse from doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
-    <small>Handed over by ${esc(c.authorName || nice(c.author))}</small>
+    <small>Handed over by ${esc(c.authorName || nice(c.author))}${timingText(s, now) ? ' · ' + esc(timingText(s, now)) : ''}</small>
     ${rb}
     ${canAck ? `<form class="ack" data-card="${esc(c.cardId)}"><label>Read back in your own words (at least ${MIN_READBACK} characters)<textarea name="rb" rows="2" required minlength="${MIN_READBACK}"></textarea></label><button>Acknowledge</button></form>` : ''}
   </article>`;
