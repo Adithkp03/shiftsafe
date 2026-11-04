@@ -1,4 +1,4 @@
-import { buildCard, completeness, deriveState, shiftSummary, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
+import { buildCard, completeness, deriveState, shiftSummary, prioritise, needsAttention, shiftReportText, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
 import { createTransport } from './transport.js';
 import { SEED } from './seed.js';
 
@@ -58,11 +58,12 @@ async function send(payload) {
   catch (e) { notice = 'Could not send: ' + e.message + '. Check your connection and try again.'; render(); }
 }
 
-let lastCards = null, lastSummary = null;
+let lastCards = null, lastSummary = null, attentionOnly = false;
 function render() {
   const now = Date.now();
-  const states = deriveState(messages, { now, escalateAfterMs: ESCALATE_MS });
-  const sum = shiftSummary(states, { now });
+  const all = deriveState(messages, { now, escalateAfterMs: ESCALATE_MS });
+  const states = prioritise(attentionOnly ? all.filter(needsAttention) : all);
+  const sum = shiftSummary(all, { now });
   if (!built) {
     built = true;
     app.innerHTML = `${BANNER}
@@ -81,7 +82,8 @@ function render() {
     <div class="${sum.escalated ? 'bad' : ''}"><b>${sum.escalated}</b><small>not acknowledged in time</small></div>
     <div><b>${sum.openTasks}</b><small>open tasks</small></div>
     <div class="grow"><div class="bar"><i style="width:${sum.total === 0 ? 0 : Math.round(sum.ackRate * 100)}%"></i></div><small>${sum.total === 0 ? 'no cards yet' : sum.awaiting === 0 ? 'all cards acknowledged' : sum.awaiting + ' awaiting acknowledgement'}</small></div>
-    ${me.role === 'out' ? '<button id="seed" class="ghost">Load fictional demo ward</button>' : ''}`;
+    <div class="acts"><button id="attn" class="ghost" aria-pressed="${attentionOnly}">${attentionOnly ? 'Showing: needs attention - show all' : 'Show only cards needing attention'}</button><button id="dl" class="ghost">Download shift report</button>
+    ${me.role === 'out' ? '<button id="seed" class="ghost">Load fictional demo ward</button>' : ''}</div>`;
   if (summaryHtml !== lastSummary) { lastSummary = summaryHtml; $('#summary').innerHTML = summaryHtml; }
   const cardsHtml = states.length ? states.map(cardHtml).join('')
     : `<p class="empty">No handover cards yet. ${me.role === 'out' ? 'Add one with the form, or load the fictional demo ward.' : 'Cards appear here as soon as the outgoing nurse posts them.'}</p>`;
@@ -131,6 +133,11 @@ function formHtml() {
 
 function wireStatic() {
   app.addEventListener('click', async (e) => {
+    if (e.target.closest('#attn')) { attentionOnly = !attentionOnly; render(); return; }
+    if (e.target.closest('#dl')) {
+      const now = Date.now(), txt = shiftReportText(deriveState(messages, { now, escalateAfterMs: ESCALATE_MS }), { now, who: me.name });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' })); a.download = 'shiftsafe-handover-report.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); return;
+    }
     const t = e.target.closest('#seed'); if (!t) return;
     t.disabled = true;
     for (const d of SEED) await send(buildCard(d, { author: me.name, shiftId: 'night', now: Date.now() }));
