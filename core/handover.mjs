@@ -19,7 +19,11 @@ export const REQUIRED_ITEMS = [
   { key: 'pendingTasks', label: 'Pending tasks (can be an explicit "none")' },
 ];
 
+export const MIN_READBACK = 10;
 export const STABILITY = ['stable', 'watch', 'critical'];
+
+// Roles are issued by the server and encoded in the user id prefix ('out...' / 'in...').
+export const roleOf = (userId) => (/^out/.test(userId || '') ? 'out' : /^in/.test(userId || '') ? 'in' : null);
 
 const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
 
@@ -59,7 +63,7 @@ export function buildCard(draft, { author, shiftId, now }) {
     type: CARD_TYPE,
     cardId: draft.cardId,
     shiftId,
-    author,
+    authorName: author,
     postedAt: now,
     bed: String(draft.bed).trim(),
     ageSex: String(draft.ageSex).trim(),
@@ -80,27 +84,45 @@ export function buildCard(draft, { author, shiftId, now }) {
  * A newer card with the same cardId supersedes the old one (corrections).
  */
 export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } = {}) {
+  // Reconnects replay history, so the same message can arrive twice and out of order.
+  // Drop duplicates by message id and replay in timestamp order (stable for equal timestamps).
+  const seen = new Set();
+  messages = messages
+    .filter(Boolean)
+    .map((m, i) => ({ m, i }))
+    .filter(({ m }) => { if (m && m.id != null) { if (seen.has(m.id)) return false; seen.add(m.id); } return true; })
+    .sort((a, b) => ((a.m.ts ?? 0) - (b.m.ts ?? 0)) || a.i - b.i)
+    .map(({ m }) => m);
   const cards = new Map();
+  // Identity comes from the transport's sender id (m.userId), never from payload fields,
+  // so a client cannot post or acknowledge as someone else.
   for (const m of messages) {
-    const p = m.payload;
-    if (!p) continue;
+    const p = m && m.payload;
+    if (!p || !m.userId) continue;
+    const role = roleOf(m.userId);
     if (p.type === CARD_TYPE) {
-      cards.set(p.cardId, { card: p, acks: [], doneTasks: new Set(), supersededAt: null });
+      if (role !== 'out' || typeof p.cardId !== 'string') continue; // only outgoing nurses post cards
+      const prev = cards.get(p.cardId);
+      if (prev && prev.card.sender !== m.userId) continue; // only the original author may correct a card
+      cards.set(p.cardId, { card: { ...p, sender: m.userId, author: m.userId }, acks: [], doneTasks: new Set(prev ? prev.doneTasks : []) });
     } else if (p.type === ACK_TYPE) {
       const s = cards.get(p.cardId);
-      if (!s) continue;
-      if (p.by === s.card.author) continue; // self-ack does not count
-      if (s.acks.some((a) => a.by === p.by)) continue;
-      s.acks.push({ by: p.by, at: p.at });
+      if (!s || role !== 'in') continue; // only incoming nurses acknowledge
+      if (s.acks.some((a) => a.by === m.userId)) continue;
+      // An acknowledgement must carry the incoming nurse's own read-back text. This records that a
+      // read-back was typed; it does not verify that it is correct or that it shows understanding.
+      const rb = typeof p.readBack === 'string' ? p.readBack.trim() : '';
+      if (rb.length < MIN_READBACK) continue;
+      s.acks.push({ by: m.userId, at: m.ts, readBack: rb.slice(0, 500) });
     } else if (p.type === TASK_TYPE) {
       const s = cards.get(p.cardId);
-      if (s && s.card.pendingTasks.some((t) => t.id === p.taskId)) s.doneTasks.add(p.taskId);
+      if (s && role && s.card.pendingTasks.some((t) => t.id === p.taskId)) s.doneTasks.add(p.taskId);
     }
   }
   const out = [];
   for (const { card, acks, doneTasks } of cards.values()) {
     const acknowledged = acks.length > 0;
-    const age = now - card.postedAt;
+    const age = now - (card.postedAt || 0);
     const overdue = !acknowledged && age >= escalateAfterMs;
     // critical or watch cards that are overdue escalate; stable ones just stay pinned
     const escalated = overdue && card.stability !== 'stable';
@@ -110,8 +132,10 @@ export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } 
       bed: card.bed,
       stability: card.stability,
       author: card.author,
+      authorName: card.authorName,
       status: acknowledged ? 'acknowledged' : 'awaiting',
       acknowledgedBy: acks.map((a) => a.by),
+      readBacks: acks,
       escalated,
       openTasks,
       card,
