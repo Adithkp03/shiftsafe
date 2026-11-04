@@ -27,8 +27,8 @@ Prints one key (`ssk1...`) to stdout and its id to stderr. The person pastes the
 
 ## Revoking someone
     NEXCONN_APP_KEY=... NEXCONN_APP_SECRET=... node scripts/revoke-user.mjs --user-id outp1a2b3c4d5e6f --ward wardx
-Expiring a key or listing it in `SS_REVOKED` only stops NEW sign-ins; a person who already has a Nexconn token and an open connection keeps working. `revoke-user.mjs` cuts the live access in three layers: expire the user's Nexconn tokens (reconnect then fails), remove the user from the ward group (history and send are refused), and ban the user (max 30 days, Nexconn's limit; terminates the live connection at once). Nexconn tokens are valid indefinitely by default (a Console setting we did not change), so the first two layers are what keep a revoked person out after the ban ends. Then add the key id (printed by `issue-credential.mjs`) to `SS_REVOKED` and redeploy. Tested live in `test/e2e/revoke.live.e2e.mjs`.
-Failed sign-ins are throttled per client (10 per 10 minutes) in memory per server instance, so on serverless hosting this slows guessing but is not a global limit. Requests over 10 KB or keys over 2000 characters are rejected.
+Expiring a key or listing it in `SS_REVOKED` only stops NEW sign-ins; a person who already has a Nexconn token and an open connection keeps working. `revoke-user.mjs` cuts the live access in three layers: expire the user's Nexconn tokens (reconnect then fails), remove the user from the ward group (history and send are refused), and ban the user (max 30 days, Nexconn's limit; terminates the live connection at once). Nexconn tokens are valid indefinitely by default (a Console setting we did not change). The ban lasts at most 30 days. Token expiry and group removal do NOT by themselves keep a revoked person out afterwards: while their key is still valid and not listed in `SS_REVOKED` in the DEPLOYED environment, signing in again mints a fresh token and re-adds them to the ward group. So a complete revoke is: run `revoke-user.mjs` (cuts the open session now), add the key id (printed by `issue-credential.mjs`) to `SS_REVOKED`, and redeploy. Until that redeploy happens the person can come back. To replace a lost or leaked key, revoke that one key and issue a new one; do not rotate `SS_SIGNING_KEY`, which would invalidate everyone. Tested live in `test/e2e/revoke.live.e2e.mjs`.
+Failed sign-ins are throttled per client (10 per 10 minutes) in memory per server instance. This is not a production rate limiter: each serverless instance counts separately and counters reset on a cold start. Requests over 10 KB or keys over 2000 characters are rejected.
 
 ## Browser tests (need Chrome and `puppeteer-core`, not installed by default)
     npm run build
@@ -37,6 +37,7 @@ Failed sign-ins are throttled per client (10 per 10 minutes) in memory per serve
     node test/e2e/auth.e2e.mjs       # personal keys: name from key, tampered/wrong-key/legacy-off rejected
     node test/e2e/skew.e2e.mjs       # device clock hours off does not change overdue status
     node test/e2e/revoke.live.e2e.mjs # LIVE: revoke cuts an open session and reconnect, other members unaffected
+    node test/e2e/isolation.live.e2e.mjs # LIVE SDK level: other-ward user and removed member refused (starts Vite dev server)
     node test/e2e/live.e2e.mjs       # LIVE Nexconn: reconnect after socket drop, visible history failure
 `live.e2e.mjs` needs the env vars above plus `E2E_OUT_CODE` and `E2E_IN_CODE`; set `CHROME=/path/to/chrome` if needed.
 
@@ -52,7 +53,7 @@ Failed sign-ins are throttled per client (10 per 10 minutes) in memory per serve
 Vercel serverless functions in `api/` plus the Vite client in `dist/`. Set the env vars above in the host; keep the repo private.
 
 ## Recovery
-Production runs with `SS_LEGACY_INVITES=0` (shared invite codes off). The signing key exists only as a write-only Vercel env value. If it is lost, set a new `SS_SIGNING_KEY` (32+ random characters) in Vercel, redeploy, and issue keys again; all older keys stop working. To fall back temporarily to shared invite codes, set `SS_LEGACY_INVITES=1` (the `SS_INVITES` values are still in place) and redeploy.
+`SS_LEGACY_INVITES=0` (shared invite codes off) is set in the host environment and takes effect with the next deployment; check the live app to see whether it is in force. The signing key exists only as a write-only Vercel env value, so nobody can read it back. Only if the signing key itself is lost or leaked: set a new `SS_SIGNING_KEY` (32+ random characters), redeploy, and issue keys again; every older key then stops working. To fall back temporarily to shared invite codes, set `SS_LEGACY_INVITES=1` (the `SS_INVITES` values are still in place) and redeploy.
 
 ## Status
 MVP plus personal access keys. See limits above.
