@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   if (!appKey || !appSecret) return res.status(503).json({ error: 'not configured' });
   try {
     const { name, code } = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
-    const grant = roleForCode(parseInvites(process.env.SS_INVITES), code);
+    const grant = roleForCode(parseInvites([process.env.SS_INVITES, process.env.SS_INVITES_EXTRA].filter(Boolean).join(',')), code);
     if (!grant) return res.status(403).json({ error: 'invalid invite code' });
     const clean = String(name ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 30);
     if (!clean) return res.status(400).json({ error: 'name must contain letters or digits' });
