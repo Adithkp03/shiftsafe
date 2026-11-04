@@ -138,6 +138,8 @@ export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } 
       readBacks: acks,
       escalated,
       openTasks,
+      postedAt: card.postedAt || 0,
+      ackAt: acks.length ? acks[0].at : null,
       card,
     });
   }
@@ -169,6 +171,16 @@ export function prioritise(states) {
   const score = (s) => (s.escalated ? 0 : s.status === 'acknowledged' ? 2 : 1);
   return [...states].sort((a, b) => score(a) - score(b) || (RANK[a.stability] ?? 3) - (RANK[b.stability] ?? 3) || String(a.card.bed).localeCompare(String(b.card.bed)));
 }
+export function fmtDur(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  return m < 1 ? 'under 1 min' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+}
+// Timing line for a card. Elapsed time only; nothing here notifies anyone.
+export function timingText(s, now) {
+  if (!s.postedAt) return '';
+  if (s.status === 'acknowledged') return s.ackAt ? 'acknowledged ' + fmtDur(s.ackAt - s.postedAt) + ' after posting' : 'acknowledged';
+  return 'waiting ' + fmtDur(now - s.postedAt) + ' since posting';
+}
 export const needsAttention = (s) => s.escalated || s.status !== 'acknowledged' || s.openTasks.length > 0;
 
 // Plain-text shift report. Synthetic demo content only; makes no clinical judgement.
@@ -176,10 +188,13 @@ export function shiftReportText(states, { now, who = '' } = {}) {
   const sum = shiftSummary(states, { now });
   const L = ['SHIFTSAFE HANDOVER REPORT (DEMO - fictional data)', `Generated: ${new Date(now).toISOString()}${who ? ' by ' + who : ''}`,
     `Acknowledged ${sum.acked}/${sum.total} | not acknowledged in time: ${sum.escalated} | open tasks: ${sum.openTasks}`,
-    'Note: a read-back is text a nurse typed; this app cannot judge whether it is correct.', ''];
+    `Scope: all ${sum.total} cards on this ward (the on-screen "needs attention" filter is not applied).`,
+    'Note: a read-back is text a nurse typed; this app cannot judge whether it is correct.',
+    'Note: "NOT ACKNOWLEDGED IN TIME" is a visual flag only. ShiftSafe sends no alert or notification to anyone. No medical advice or clinical judgement is given.', ''];
   for (const s of prioritise(states)) {
     const c = s.card;
     L.push(`[${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged' : 'awaiting acknowledgement'}] ${c.bed} (${c.ageSex}) - ${s.stability}`);
+    { const tt = timingText(s, now); if (tt) L.push('  Timing: ' + tt); }
     L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
     for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
     for (const a of s.readBacks) L.push(`  Read-back by ${a.by}: ${a.readBack}`);
