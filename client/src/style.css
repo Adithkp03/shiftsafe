@@ -14,3 +14,9 @@ button{background:#0b6fa4;color:#fff;border:0;padding:8px 14px;border-radius:6px
 dl{display:grid;grid-template-columns:110px 1fr;gap:2px 8px;margin:8px 0}dt{color:#567;font-size:12px}dd{margin:0}
 .tasks{list-style:none;padding:0;margin:6px 0}.tasks label{display:flex;gap:6px;margin:2px 0}.tasks input{width:auto;margin:0}.done{text-decoration:line-through;color:#789}.none{color:#789;font-size:13px}
 .side{background:#fff;border-radius:8px;padding:12px 14px;height:fit-content}.empty{color:#789}
+
+.banner{background:#fff3cd;color:#5c4400;border-bottom:2px solid #e0a100;padding:8px 16px;font-size:13px;position:sticky;top:0;z-index:5}
+#notice:not(:empty){background:#fde8e8;color:#8a1c1c;padding:8px 16px}.off{background:#c0262d;padding:2px 8px;border-radius:9px;font-size:12px}.err{color:#c0262d;min-height:1em}
+.rb{background:#eef6fb;border-radius:6px;padding:6px 8px;margin:6px 0;font-size:13px}.ack textarea{min-height:48px}
+button:disabled{opacity:.5;cursor:default}:focus-visible{outline:3px solid #0b6fa4;outline-offset:1px}
+@media(max-width:600px){header{flex-wrap:wrap}.summary{flex-wrap:wrap;gap:10px}.grow{flex-basis:100%}dl{grid-template-columns:1fr}.cols{padding:10px}.card{padding:10px}.login{margin:3vh 10px}input,select,textarea,button{font-size:16px}button{min-height:44px}.st{margin-left:0;flex-basis:100%}}
