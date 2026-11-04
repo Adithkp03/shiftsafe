@@ -1,6 +1,8 @@
 // Vercel function: checks the invite code, mints a Nexconn token, and adds the user to the ward group server-side.
 import { parseInvites, roleForCode } from '../server/app.mjs';
 import { authenticate, legacyEnabled } from '../server/auth.mjs';
+import { createThrottle, clientKey } from '../server/throttle.mjs';
+const throttle = createThrottle(); // per instance, best effort
 import { issueToken, ensureWardMember } from '../server/nexconn.mjs';
 
 const BASE_URL = process.env.NEXCONN_BASE_URL || 'https://api.sg-light-api.com';
@@ -10,10 +12,15 @@ export default async function handler(req, res) {
   const appKey = process.env.NEXCONN_APP_KEY, appSecret = process.env.NEXCONN_APP_SECRET;
   if (!appKey || !appSecret) return res.status(503).json({ error: 'not configured' });
   try {
+    const ck = clientKey(req);
+    if (throttle.blocked(ck)) return res.status(429).json({ error: 'too many failed attempts, try again later' });
+    const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    if (raw.length > 10000) return res.status(413).json({ error: 'request too large' });
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     const legacy = legacyEnabled(process.env) ? parseInvites([process.env.SS_INVITES, process.env.SS_INVITES_EXTRA].filter(Boolean).join(',')) : null;
     const r = authenticate({ body, env: process.env, legacy, roleForCode });
-    if (!r.ok) return res.status(r.status).json({ error: r.error });
+    if (!r.ok) { if (r.status === 403) throttle.fail(ck); return res.status(r.status).json({ error: r.error }); }
+    throttle.ok(ck);
     const { role, ward, userId, name } = r;
     const t = await issueToken({ baseUrl: BASE_URL, appKey, appSecret, userId, name });
     const groupId = await ensureWardMember({ baseUrl: BASE_URL, appKey, appSecret, wardId: ward, userId: t.userId });
