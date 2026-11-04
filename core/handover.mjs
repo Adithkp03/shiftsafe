@@ -83,13 +83,16 @@ export function buildCard(draft, { author, shiftId, now }) {
  * Self-acknowledgement is ignored (read-back must come from a different person).
  * A newer card with the same cardId supersedes the old one (corrections).
  */
+// One demo threshold for the overdue flag, used by the reducer default, the UI and the report. It is a demo
+// setting chosen for visibility, not a clinical standard; a ward would set its own.
+export const DEMO_ESCALATE_MS = 2 * 60 * 1000;
 export const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 /** A usable event time: finite, positive, and not in the future beyond tolerance. Otherwise null (unknown). */
 export function validTs(ts, now) {
   return typeof ts === 'number' && Number.isFinite(ts) && ts > 0 && ts <= now + FUTURE_TOLERANCE_MS ? ts : null;
 }
 
-export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } = {}) {
+export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS } = {}) {
   // Reconnects replay history, so the same message can arrive twice and out of order.
   // Drop duplicates by message id and replay in timestamp order (stable for equal timestamps).
   const seen = new Set();
@@ -193,13 +196,13 @@ export function timingText(s, now) {
 export const needsAttention = (s) => s.escalated || s.status !== 'acknowledged' || s.openTasks.length > 0;
 
 // Plain-text shift report. Synthetic demo content only; makes no clinical judgement.
-export function shiftReportText(states, { now, who = '' } = {}) {
+export function shiftReportText(states, { now, who = '', escalateAfterMs = DEMO_ESCALATE_MS } = {}) {
   const sum = shiftSummary(states, { now });
   const L = ['SHIFTSAFE HANDOVER REPORT (DEMO - fictional data)', `Generated: ${new Date(now).toISOString()}${who ? ' by ' + who : ''}`,
     `Acknowledged ${sum.acked}/${sum.total} | not acknowledged in time: ${sum.escalated} | open tasks: ${sum.openTasks}`,
     `Scope: all ${sum.total} cards on this ward (the on-screen "needs attention" filter is not applied).`,
     'Note: a read-back is text a nurse typed; this app cannot judge whether it is correct.',
-    'Note: "NOT ACKNOWLEDGED IN TIME" is a visual flag only. ShiftSafe sends no alert or notification to anyone. No medical advice or clinical judgement is given.', ''];
+    `Note: "NOT ACKNOWLEDGED IN TIME" is a visual flag only (a watch/critical card unacknowledged for ${Math.round(escalateAfterMs / 60000)} min; a demo setting, not a clinical standard). ShiftSafe sends no alert or notification to anyone. No medical advice or clinical judgement is given.`, ''];
   for (const s of prioritise(states)) {
     const c = s.card;
     L.push(`[${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged' : 'awaiting acknowledgement'}] ${c.bed} (${c.ageSex}) - ${s.stability}`);
