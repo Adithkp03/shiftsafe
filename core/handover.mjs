@@ -197,7 +197,8 @@ export function shiftReportText(states, { now, who = '' } = {}) {
     { const tt = timingText(s, now); if (tt) L.push('  Timing: ' + tt); }
     L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
     for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
-    for (const a of s.readBacks) L.push(`  Read-back by ${a.by}: ${a.readBack}`);
+    for (const a of s.readBacks) L.push(`  Read-back by ${a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
+    if (s.postedAt) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
     L.push('');
   }
   return L.join('\n');
