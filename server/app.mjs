@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { authenticate, legacyEnabled } from './auth.mjs';
+import { createThrottle, clientKey } from './throttle.mjs';
 import { issueToken, isValidUserId, ensureWardMember, isValidWardId } from './nexconn.mjs';
 
 const env = process.env;
@@ -28,6 +29,7 @@ export function roleForCode(invites, code) {
 
 export function createApp({ appKey = env.NEXCONN_APP_KEY, appSecret = env.NEXCONN_APP_SECRET, fetchImpl = fetch, staticDir = 'dist', invites } = {}) {
   const live = Boolean(appKey && appSecret);
+  const throttle = createThrottle();
   const inv = invites ?? parseInvites([env.SS_INVITES, env.SS_INVITES_EXTRA].filter(Boolean).join(',') || (live ? '' : 'demo-out:out,demo-in:in'));
   const auth = (req) => sessions.get(req.headers['x-session'] || new URL(req.url, 'http://x').searchParams.get('s') || '');
   const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -37,9 +39,12 @@ export function createApp({ appKey = env.NEXCONN_APP_KEY, appSecret = env.NEXCON
       const url = new URL(req.url, 'http://x');
       if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { mode: live ? 'nexconn' : 'mock', appKey: live ? appKey : null });
       if (req.method === 'POST' && url.pathname === '/api/session') {
+        const ck = clientKey(req);
+        if (throttle.blocked(ck)) return send(res, 429, { error: 'too many failed attempts, try again later' });
         const b = await body(req);
         const r = authenticate({ body: b, env, legacy: legacyEnabled(env) ? inv : null, roleForCode });
-        if (!r.ok) return send(res, r.status, { error: r.error });
+        if (!r.ok) { if (r.status === 403) throttle.fail(ck); return send(res, r.status, { error: r.error }); }
+        throttle.ok(ck);
         const { role, ward, userId, name } = r;
         const sessionToken = randomBytes(18).toString('hex');
         sessions.set(sessionToken, { userId, ward });
