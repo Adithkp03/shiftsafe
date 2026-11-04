@@ -83,6 +83,12 @@ export function buildCard(draft, { author, shiftId, now }) {
  * Self-acknowledgement is ignored (read-back must come from a different person).
  * A newer card with the same cardId supersedes the old one (corrections).
  */
+export const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+/** A usable event time: finite, positive, and not in the future beyond tolerance. Otherwise null (unknown). */
+export function validTs(ts, now) {
+  return typeof ts === 'number' && Number.isFinite(ts) && ts > 0 && ts <= now + FUTURE_TOLERANCE_MS ? ts : null;
+}
+
 export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } = {}) {
   // Reconnects replay history, so the same message can arrive twice and out of order.
   // Drop duplicates by message id and replay in timestamp order (stable for equal timestamps).
@@ -104,7 +110,10 @@ export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } 
       if (role !== 'out' || typeof p.cardId !== 'string') continue; // only outgoing nurses post cards
       const prev = cards.get(p.cardId);
       if (prev && prev.card.sender !== m.userId) continue; // only the original author may correct a card
-      cards.set(p.cardId, { card: { ...p, sender: m.userId, author: m.userId }, acks: [], doneTasks: new Set(prev ? prev.doneTasks : []) });
+      // Time comes from the transport's server timestamp (m.ts), never from the payload: a poster-controlled
+      // postedAt must not drive overdue status. A corrected card keeps the original posting time.
+      const at = prev ? prev.postedAt : validTs(m.ts, now);
+      cards.set(p.cardId, { card: { ...p, postedAt: undefined, sender: m.userId, author: m.userId }, postedAt: at, acks: [], doneTasks: new Set(prev ? prev.doneTasks : []) });
     } else if (p.type === ACK_TYPE) {
       const s = cards.get(p.cardId);
       if (!s || role !== 'in') continue; // only incoming nurses acknowledge
@@ -113,17 +122,17 @@ export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } 
       // read-back was typed; it does not verify that it is correct or that it shows understanding.
       const rb = typeof p.readBack === 'string' ? p.readBack.trim() : '';
       if (rb.length < MIN_READBACK) continue;
-      s.acks.push({ by: m.userId, at: m.ts, readBack: rb.slice(0, 500) });
+      s.acks.push({ by: m.userId, at: validTs(m.ts, now), readBack: rb.slice(0, 500) });
     } else if (p.type === TASK_TYPE) {
       const s = cards.get(p.cardId);
       if (s && role && s.card.pendingTasks.some((t) => t.id === p.taskId)) s.doneTasks.add(p.taskId);
     }
   }
   const out = [];
-  for (const { card, acks, doneTasks } of cards.values()) {
+  for (const { card, postedAt, acks, doneTasks } of cards.values()) {
     const acknowledged = acks.length > 0;
-    const age = now - (card.postedAt || 0);
-    const overdue = !acknowledged && age >= escalateAfterMs;
+    // Unknown or invalid post time means we cannot say it is overdue.
+    const overdue = !acknowledged && postedAt != null && now - postedAt >= escalateAfterMs;
     // critical or watch cards that are overdue escalate; stable ones just stay pinned
     const escalated = overdue && card.stability !== 'stable';
     const openTasks = card.pendingTasks.filter((t) => !doneTasks.has(t.id));
@@ -138,7 +147,7 @@ export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } 
       readBacks: acks,
       escalated,
       openTasks,
-      postedAt: card.postedAt || 0,
+      postedAt,
       ackAt: acks.length ? acks[0].at : null,
       card,
     });
@@ -177,8 +186,8 @@ export function fmtDur(ms) {
 }
 // Timing line for a card. Elapsed time only; nothing here notifies anyone.
 export function timingText(s, now) {
-  if (!s.postedAt) return '';
-  if (s.status === 'acknowledged') return s.ackAt ? 'acknowledged ' + fmtDur(s.ackAt - s.postedAt) + ' after posting' : 'acknowledged';
+  if (s.postedAt == null) return 'time unknown';
+  if (s.status === 'acknowledged') return s.ackAt != null && s.ackAt >= s.postedAt ? 'acknowledged ' + fmtDur(s.ackAt - s.postedAt) + ' after posting' : 'acknowledged (time unknown)';
   return 'waiting ' + fmtDur(now - s.postedAt) + ' since posting';
 }
 export const needsAttention = (s) => s.escalated || s.status !== 'acknowledged' || s.openTasks.length > 0;
@@ -198,7 +207,7 @@ export function shiftReportText(states, { now, who = '' } = {}) {
     L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
     for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
     for (const a of s.readBacks) L.push(`  Read-back by ${a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
-    if (s.postedAt) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
+    if (s.postedAt != null) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
     L.push('');
   }
   return L.join('\n');
