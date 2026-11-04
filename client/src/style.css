@@ -20,3 +20,4 @@ dl{display:grid;grid-template-columns:110px 1fr;gap:2px 8px;margin:8px 0}dt{colo
 .rb{background:#eef6fb;border-radius:6px;padding:6px 8px;margin:6px 0;font-size:13px}.ack textarea{min-height:48px}
 button:disabled{opacity:.5;cursor:default}:focus-visible{outline:3px solid #0b6fa4;outline-offset:1px}
 @media(max-width:600px){header{flex-wrap:wrap}.summary{flex-wrap:wrap;gap:10px}.grow{flex-basis:100%}dl{grid-template-columns:1fr}.cols{padding:10px}.card{padding:10px}.login{margin:3vh 10px}input,select,textarea,button{font-size:16px}button{min-height:44px}.st{margin-left:0;flex-basis:100%}}
+.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
