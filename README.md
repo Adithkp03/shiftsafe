@@ -1,20 +1,38 @@
 # ShiftSafe
 
-Structured nurse shift handover on the Nexconn Chat SDK. Each patient is an SBAR card posted to a ward group channel as a custom message. A card cannot be posted until its 8 communication items are filled. The incoming nurse must read back and accept each card (the author cannot acknowledge their own card). Unacknowledged watch/critical cards escalate after a set window, and pending tasks are tracked to done.
+Structured nurse shift handover on the Nexconn Chat SDK. Each patient is an SBAR card posted to a ward group channel. A card cannot be posted until its 8 communication items are filled (our own design, not a clinical standard). The incoming nurse types a read-back and acknowledges each card; the author cannot acknowledge their own card. Pending tasks are tracked to done.
 
-**Honest limits:** demo with synthetic patients only. It is a communication aid, not a medical device. It never recommends treatment or diagnoses.
+**Honest limits**
+- Demo with synthetic patients only. A communication aid, not a medical device. It gives no medical advice or diagnosis.
+- A read-back is text a nurse typed. The app records that it was typed; it cannot tell whether it is correct.
+- "Not acknowledged in time" is a visual flag only (watch/critical cards, demo setting of 2 minutes shared by logic, UI and report; not a clinical standard). Nothing is sent to anyone: no alert, push or message.
+- Times come from the server timestamp of each message, never from the poster's payload. The viewer's clock is corrected using the server time returned at sign-in and live messages; the correction is accurate to about network latency. An invalid or far-future timestamp shows "time unknown" and is never treated as overdue.
+- Ward isolation relies on Nexconn group membership: the server adds a user to a ward group only after an invite code check. Tested at SDK level (other-ward user and removed member are refused). The "Restrict chat history access to members" Console setting was left unchanged and its exact semantics were not established, so no blanket privacy claim is made. "Enable pre-join history access by new member" must be Allowed in the Nexconn Console so a newly added nurse can read cards already posted.
+- Free-plan custom message types were not delivered in our test, so card/ack/task payloads travel as JSON inside a built-in text message with the prefix `SS1:`.
+- Invite codes are shared secrets in env vars, not user accounts. No real authentication.
 
 ## Run
     npm install
-    npm test
-    npm run build && node server/app.mjs     # mock relay if no credentials
+    npm test                                  # unit tests (core logic, token signing)
+    npm run build && node server/app.mjs      # local mock relay when no credentials are set (demo codes demo-out / demo-in)
 
-Live Nexconn mode needs `NEXCONN_APP_KEY` and `NEXCONN_APP_SECRET` in the server environment (Singapore base URL default `https://api.sg-light-api.com`). The secret never reaches the browser or this repo.
+Live mode needs these server environment variables (never commit values):
+- `NEXCONN_APP_KEY`, `NEXCONN_APP_SECRET`: Nexconn app credentials (Singapore default base URL `https://api.sg-light-api.com`, override with `NEXCONN_BASE_URL`).
+- `SS_INVITES`: comma list of `code:role:ward`, e.g. `<code>:out:wardx,<code>:in:wardx` (role `out` or `in`). `SS_INVITES_EXTRA` is appended for additional wards.
+
+## Browser tests (need Chrome and `puppeteer-core`, not installed by default)
+    npm run build
+    node test/e2e/typing.e2e.mjs     # draft survives timer ticks and incoming messages
+    node test/e2e/report.e2e.mjs     # report download scope and content, filter keeps drafts, mobile layout
+    node test/e2e/skew.e2e.mjs       # device clock hours off does not change overdue status
+    node test/e2e/live.e2e.mjs       # LIVE Nexconn: reconnect after socket drop, visible history failure
+`live.e2e.mjs` needs the env vars above plus `E2E_OUT_CODE` and `E2E_IN_CODE`; set `CHROME=/path/to/chrome` if needed.
 
 ## Layout
-- `core/handover.mjs` completeness, acknowledgement, escalation (pure, tested)
-- `server/` token minting (signature per Nexconn docs) and local mock relay
+- `core/handover.mjs` completeness, acknowledgement, overdue flag, timing, report text (pure, tested)
+- `server/` token minting and ward joins (signature per Nexconn docs) plus the local mock relay
+- `api/` Vercel serverless functions (`session`, `config`)
 - `client/` Vite app; `transport.js` has the Nexconn SDK and mock transports
 
 ## Deployment
-Serverless functions in `api/` (session, config) plus the Vite client in `dist/`. Set NEXCONN_APP_KEY, NEXCONN_APP_SECRET and SS_INVITES as environment variables; never commit them.
+Vercel serverless functions in `api/` plus the Vite client in `dist/`. Set the env vars above in the host; keep the repo private.
