@@ -24,10 +24,10 @@ async function mockTransport(session) {
 }
 
 async function nexconnTransport(session) {
-  const { NCEngine, AreaCode, GroupChannel, SendTextMessageParams, BaseChannel, MessageHandler, ConnectionStatusHandler } = await import('@nexconn/chat');
+  const { NCEngine, AreaCode, GroupChannel, SendTextMessageParams, BaseChannel, MessageHandler, ConnectionStatusHandler, ConnectionStatus } = await import('@nexconn/chat');
   NCEngine.initialize({ appKey: session.appKey, areaCode: AreaCode.SG });
   const handlers = new Set(); const statusH = new Set();
-  NCEngine.addConnectionStatusHandler('shiftsafe-conn', new ConnectionStatusHandler({ onConnectionStatusChanged({ status }) { statusH.forEach((h) => h(String(status).toLowerCase().includes('connected') && !String(status).toLowerCase().includes('dis') ? 'online' : 'offline')); } }));
+  NCEngine.addConnectionStatusHandler('shiftsafe-conn', new ConnectionStatusHandler({ onConnectionStatusChanged({ status }) { statusH.forEach((h) => h(status === ConnectionStatus.CONNECTED ? 'online' : 'offline')); } }));
   // Custom message types were accepted by the SDK but never delivered by the Free-plan server in our live test
 // (built-in text was), so the payload travels as JSON inside a built-in text message with a fixed prefix.
 const PREFIX = 'SS1:';
