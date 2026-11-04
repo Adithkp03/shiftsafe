@@ -39,11 +39,15 @@ function renderLogin(err = '') {
         const was = online; online = x === 'online'; render();
         if (online && !was) { try { messages = messages.concat(await transport.history()); render(); } catch { notice = 'Reconnected, but could not refresh history. Reload the page.'; render(); } } // dedupe happens in the reducer
       });
-      messages = await transport.history();
+      try { messages = await transport.history(); } catch { notice = 'Could not load earlier cards yet. Retrying...'; }
       transport.onMessages((m) => { messages = messages.concat(m); render(); });
       render(); setInterval(render, 1000);
       // A user who was just added to the ward can query history before the server finishes the join; refresh a few times (reducer dedupes by id).
-      for (const ms of [2500, 6000, 12000]) setTimeout(async () => { try { const h = await transport.history(); if (h.length) { messages = messages.concat(h); render(); } } catch { /* next try */ } }, ms);
+      let loaded = notice === '';
+      [2500, 6000, 12000].forEach((ms, n, all) => setTimeout(async () => {
+        try { const h = await transport.history(); loaded = true; if (notice.startsWith('Could not load earlier')) notice = ''; if (h.length) messages = messages.concat(h); render(); }
+        catch { if (!loaded && n === all.length - 1) { notice = 'Could not load earlier cards. What you see may be incomplete - reload the page.'; render(); } }
+      }, ms));
     } catch (err) { renderLogin(err.message); }
   };
 }
