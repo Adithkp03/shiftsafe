@@ -6,7 +6,7 @@
   "description": "ShiftSafe: structured, acknowledged nurse shift handover on Nexconn Chat SDK (synthetic-data coordination demo, not a clinical decision tool)",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "test:e2e": "node test/e2e/typing.e2e.mjs",
+    "test:e2e": "node test/e2e/typing.e2e.mjs && node test/e2e/report.e2e.mjs && node test/e2e/skew.e2e.mjs",
     "dev": "vite",
     "build": "vite build",
     "start": "node server/app.mjs"
