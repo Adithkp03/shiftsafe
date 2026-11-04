@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     const userId = grant.role + clean;
     const t = await issueToken({ baseUrl: BASE_URL, appKey, appSecret, userId, name: String(name).trim().slice(0, 30) });
     const groupId = await ensureWardMember({ baseUrl: BASE_URL, appKey, appSecret, wardId: grant.ward, userId: t.userId });
-    res.status(200).json({ mode: 'nexconn', appKey, groupId, userId: t.userId, role: grant.role, name: String(name).slice(0, 30), token: t.accessToken, sessionToken: 'live' });
+    res.status(200).json({ mode: 'nexconn', appKey, groupId, userId: t.userId, role: grant.role, name: String(name).slice(0, 30), token: t.accessToken, sessionToken: 'live', serverNow: Date.now() });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.status === 400 ? e.message : 'session failed' });
   }
