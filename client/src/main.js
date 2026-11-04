@@ -1,11 +1,11 @@
-import { buildCard, completeness, deriveState, shiftSummary, prioritise, needsAttention, shiftReportText, timingText, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
+import { buildCard, completeness, deriveState, shiftSummary, prioritise, needsAttention, shiftReportText, timingText, DEMO_ESCALATE_MS, REQUIRED_ITEMS, ACK_TYPE, TASK_TYPE, MIN_READBACK } from '@core/handover.mjs';
 import { createTransport } from './transport.js';
 import { SEED } from './seed.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nice = (id) => String(id).replace(/^(out|in)/, '');
-const ESCALATE_MS = 2 * 60 * 1000; // demo window; a ward would set its own
+const ESCALATE_MS = DEMO_ESCALATE_MS; // single demo threshold shared with the reducer and the report
 const app = $('#app');
 let transport, me, messages = [], online = true, notice = '', built = false;
 
@@ -143,7 +143,7 @@ function wireStatic() {
   app.addEventListener('click', async (e) => {
     if (e.target.closest('#attn')) { attentionOnly = !attentionOnly; render(); return; }
     if (e.target.closest('#dl')) {
-      const now = serverNow(), txt = shiftReportText(deriveState(messages, { now, escalateAfterMs: ESCALATE_MS }), { now, who: me.name });
+      const now = serverNow(), txt = shiftReportText(deriveState(messages, { now, escalateAfterMs: ESCALATE_MS }), { now, who: me.name, escalateAfterMs: ESCALATE_MS });
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' })); a.download = 'shiftsafe-handover-report.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); return;
     }
     const t = e.target.closest('#seed'); if (!t) return;
