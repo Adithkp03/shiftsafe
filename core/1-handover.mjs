@@ -84,11 +84,20 @@ export function buildCard(draft, { author, shiftId, now }) {
  * A newer card with the same cardId supersedes the old one (corrections).
  */
 export function deriveState(messages, { now, escalateAfterMs = 10 * 60 * 1000 } = {}) {
+  // Reconnects replay history, so the same message can arrive twice and out of order.
+  // Drop duplicates by message id and replay in timestamp order (stable for equal timestamps).
+  const seen = new Set();
+  messages = messages
+    .filter(Boolean)
+    .map((m, i) => ({ m, i }))
+    .filter(({ m }) => { if (m && m.id != null) { if (seen.has(m.id)) return false; seen.add(m.id); } return true; })
+    .sort((a, b) => ((a.m.ts ?? 0) - (b.m.ts ?? 0)) || a.i - b.i)
+    .map(({ m }) => m);
   const cards = new Map();
   // Identity comes from the transport's sender id (m.userId), never from payload fields,
   // so a client cannot post or acknowledge as someone else.
   for (const m of messages) {
-    const p = m.payload;
+    const p = m && m.payload;
     if (!p || !m.userId) continue;
     const role = roleOf(m.userId);
     if (p.type === CARD_TYPE) {
