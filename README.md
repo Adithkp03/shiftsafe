@@ -51,5 +51,8 @@ Failed sign-ins are throttled per client (10 per 10 minutes) in memory per serve
 ## Deployment
 Vercel serverless functions in `api/` plus the Vite client in `dist/`. Set the env vars above in the host; keep the repo private.
 
+## Recovery
+Production runs with `SS_LEGACY_INVITES=0` (shared invite codes off). The signing key exists only as a write-only Vercel env value. If it is lost, set a new `SS_SIGNING_KEY` (32+ random characters) in Vercel, redeploy, and issue keys again; all older keys stop working. To fall back temporarily to shared invite codes, set `SS_LEGACY_INVITES=1` (the `SS_INVITES` values are still in place) and redeploy.
+
 ## Status
 MVP plus personal access keys. See limits above.
