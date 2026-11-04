@@ -69,3 +69,39 @@ test('HTTP session endpoint (mock mode): personal key, wrong key, and legacy swi
     assert.equal((await post({ name: 'Ravi', code: 'demo-in' }))[0], 403);
   } finally { srv.close(); for (const k of ['SS_SIGNING_KEY', 'SS_LEGACY_INVITES', 'NEXCONN_APP_KEY', 'NEXCONN_APP_SECRET']) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } }
 });
+
+import { createThrottle, clientKey } from '../server/throttle.mjs';
+import { revokeUser } from '../server/nexconn.mjs';
+test('throttle blocks after max failures, resets by window, success clears, memory bounded', () => {
+  const t = createThrottle({ max: 3, windowMs: 1000, cap: 2 });
+  for (let i = 0; i < 3; i++) { assert.equal(t.blocked('a', 0), false); t.fail('a', 0); }
+  assert.equal(t.blocked('a', 500), true); assert.equal(t.blocked('a', 1000), false);
+  t.fail('b', 0); t.ok('b'); assert.equal(t.blocked('b', 0), false);
+  t.fail('c', 0); t.fail('d', 0); t.fail('e', 0); assert.ok(t.size() <= 2);
+  assert.equal(clientKey({ headers: { 'x-forwarded-for': '1.2.3.4, 5.6.7.8' } }), '1.2.3.4');
+});
+test('oversized or non-string input is rejected before any check', () => {
+  const r = authenticate({ body: { code: 'x'.repeat(2001) }, env: {}, legacy: null, roleForCode });
+  assert.equal(r.ok, false); assert.equal(r.status, 400);
+  assert.equal(authenticate({ body: { code: { a: 1 } }, env: {}, legacy: null, roleForCode }).status, 400);
+  assert.equal(authenticate({ body: { code: 'c', name: 'n'.repeat(201) }, env: {}, legacy: parseInvites('c:in:w'), roleForCode }).status, 400);
+});
+test('revokeUser expires tokens, removes from ward group and bans (max 30 days)', async () => {
+  const calls = [], fetchImpl = async (url, o) => { calls.push([new URL(url).pathname, JSON.parse(o.body)]); return { ok: true, status: 200, json: async () => ({ code: 0 }) }; };
+  const r = await revokeUser({ baseUrl: 'https://x.test', appKey: 'k', appSecret: 's', userId: 'inpabc', wardId: 'wardx', banMinutes: 999999, now: 5, fetchImpl });
+  assert.deepEqual(calls.map((c) => c[0]), ['/v4/auth/access-token/expire', '/v4/group-channel/leave', '/v4/user/ban']);
+  assert.deepEqual(calls[0][1], { userIds: ['inpabc'], expiresAt: 5 }); assert.deepEqual(calls[1][1], { channelId: 'sswardx', userIds: ['inpabc'] });
+  assert.equal(calls[2][1].durationMinutes, 43200); assert.equal(r.ok, true);
+  await assert.rejects(() => revokeUser({ baseUrl: 'https://x.test', appKey: 'k', appSecret: 's', userId: 'bad id', wardId: 'wardx', fetchImpl }));
+});
+
+test('HTTP throttle: repeated bad keys get 429, a different client is unaffected', async () => {
+  const srv = createApp({ appKey: '', appSecret: '', invites: parseInvites('demo-in:in') }); await new Promise((r) => srv.listen(0, r));
+  const url = `http://127.0.0.1:${srv.address().port}/api/session`;
+  const post = (xff, code) => fetch(url, { method: 'POST', headers: { 'x-forwarded-for': xff }, body: JSON.stringify({ name: 'A', code }) }).then((r) => r.status);
+  try {
+    for (let i = 0; i < 10; i++) assert.equal(await post('9.9.9.9', 'nope'), 403);
+    assert.equal(await post('9.9.9.9', 'nope'), 429); assert.equal(await post('9.9.9.9', 'demo-in'), 429);
+    assert.equal(await post('8.8.8.8', 'demo-in'), 200);
+  } finally { srv.close(); }
+});
