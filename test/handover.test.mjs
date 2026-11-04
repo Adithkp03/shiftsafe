@@ -242,3 +242,12 @@ test('replay and out-of-order delivery do not change post time or duplicate acks
   const fix = mid(card({ cardId: 'r1', assessment: 'edited' }), 'out1', 'c2', t + 90_000);
   assert.equal(deriveState([c, a, fix], { now })[0].postedAt, t);
 });
+
+import { DEMO_ESCALATE_MS } from '../core/handover.mjs';
+test('one demo threshold: reducer default, boundary, and report agree', () => {
+  assert.equal(DEMO_ESCALATE_MS, 120000);
+  const now = 50 * 3_600_000, c = (age) => deriveState([{ payload: card({ cardId: 'q', stability: 'watch' }), userId: 'out1', id: 'm', ts: now - age }], { now })[0];
+  assert.equal(c(DEMO_ESCALATE_MS - 1).escalated, false); assert.equal(c(DEMO_ESCALATE_MS).escalated, true);
+  assert.match(shiftReportText([], { now }), /unacknowledged for 2 min; a demo setting, not a clinical standard/);
+  assert.match(shiftReportText([], { now, escalateAfterMs: 300000 }), /for 5 min/);
+});
