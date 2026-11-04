@@ -38,3 +38,34 @@ export async function issueToken({ baseUrl, appKey, appSecret, userId, name, fet
   }
   return { userId: body.result.userId, accessToken: body.result.accessToken };
 }
+
+/** Signed POST to any Platform API path; returns the parsed body or throws a 502. */
+export async function callApi({ baseUrl, appKey, appSecret, path, body, fetchImpl = fetch }) {
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}${path}`, {
+    method: 'POST', headers: signHeaders({ appKey, appSecret }), body: JSON.stringify(body),
+  });
+  let json = null;
+  try { json = await res.json(); } catch { /* non-JSON body */ }
+  if (!res.ok && !json) throw Object.assign(new Error(`Nexconn API HTTP ${res.status}`), { status: 502 });
+  return { httpStatus: res.status, ...json };
+}
+
+export const isValidWardId = (id) => typeof id === 'string' && /^[A-Za-z0-9]{1,48}$/.test(id);
+
+/**
+ * Server-enforced membership: the ward group is created with nobody-can-join-by-themselves
+ * (joinPerm 3) and users are added only here, after their invite code was checked.
+ * Idempotent: "already exists" style failures on create are tolerated, join is always attempted.
+ */
+export async function ensureWardMember({ baseUrl, appKey, appSecret, wardId, userId, fetchImpl = fetch }) {
+  if (!isValidWardId(wardId)) throw Object.assign(new Error('bad ward'), { status: 400 });
+  const ownerId = 'wardowner' + wardId.slice(0, 40);
+  await issueToken({ baseUrl, appKey, appSecret, userId: ownerId, name: 'Ward owner', fetchImpl }); // registers the owner
+  const groupId = 'ss' + wardId;
+  const c = await callApi({ baseUrl, appKey, appSecret, path: '/v4/group-channel/create', fetchImpl,
+    body: { channelId: groupId, name: `Ward ${wardId} (synthetic)`, owner: ownerId, permissions: { joinPerm: 3, memInvitePerm: 0, removePerm: 0 } } });
+  if (c.code !== 0 && c.code !== 25409) throw Object.assign(new Error(`create failed code ${c.code}`), { status: 502 });
+  const j = await callApi({ baseUrl, appKey, appSecret, path: '/v4/group-channel/join', fetchImpl, body: { channelId: groupId, userIds: [userId] } });
+  if (j.code !== 0) throw Object.assign(new Error(`join failed code ${j.code}`), { status: 502 });
+  return groupId;
+}
