@@ -69,3 +69,20 @@ export async function ensureWardMember({ baseUrl, appKey, appSecret, wardId, use
   if (j.code !== 0) throw Object.assign(new Error(`join failed code ${j.code}`), { status: 502 });
   return groupId;
 }
+
+/**
+ * Revoke a person's live access, not just future sign-ins. Three layered steps (each reported):
+ *  1. expire all access tokens issued so far (existing connections stay up, but reconnect fails),
+ *  2. remove the user from the ward group (history and send are then refused),
+ *  3. ban the user for up to 30 days (Nexconn's maximum; the live connection is terminated at once).
+ * Nexconn tokens are valid indefinitely by default, so step 1 and 2 are what keep a revoked person out after the
+ * ban expires. Also list the key id in SS_REVOKED so no new session can be minted.
+ */
+export async function revokeUser({ baseUrl, appKey, appSecret, userId, wardId, banMinutes = 43200, now = Date.now(), fetchImpl = fetch }) {
+  if (!isValidUserId(userId) || !isValidWardId(wardId)) throw Object.assign(new Error('bad userId or ward'), { status: 400 });
+  const common = { baseUrl, appKey, appSecret, fetchImpl };
+  const expire = await callApi({ ...common, path: '/v4/auth/access-token/expire', body: { userIds: [userId], expiresAt: now } });
+  const leave = await callApi({ ...common, path: '/v4/group-channel/leave', body: { channelId: 'ss' + wardId, userIds: [userId] } });
+  const ban = await callApi({ ...common, path: '/v4/user/ban', body: { userIds: [userId], durationMinutes: Math.min(Math.max(1, banMinutes), 43200) } });
+  return { expireTokens: expire.code, leaveGroup: leave.code, ban: ban.code, ok: expire.code === 0 && ban.code === 0 && leave.code === 0 };
+}
