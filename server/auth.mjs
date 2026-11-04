@@ -49,6 +49,7 @@ export function verifyCredential({ keys, credential, now = Date.now(), revoked =
 // legacy: Map(code -> {role, ward}) of shared invite codes, or null when disabled.
 export function authenticate({ body, env, legacy, roleForCode, now = Date.now() }) {
   const code = body && (body.code ?? body.key);
+  if (typeof code !== 'string' || code.length > 2000 || (body.name != null && String(body.name).length > 200)) return { ok: false, status: 400, error: 'invalid input', reason: 'size' };
   if (typeof code === 'string' && code.startsWith(PREFIX)) {
     const v = verifyCredential({ keys: env.SS_SIGNING_KEY, credential: code.trim(), now, revoked: env.SS_REVOKED });
     return v.ok ? { ok: true, ...v.grant, kind: 'personal' } : { ok: false, status: 403, error: 'invalid or expired access key', reason: v.reason };
