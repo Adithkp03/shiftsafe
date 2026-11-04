@@ -19,8 +19,8 @@ function renderLogin(err = '') {
     <h1>ShiftSafe</h1>
     <p class="tag">Shift handover as chat: each patient is a structured card, and the incoming nurse must type a read-back before a card counts as acknowledged.</p>
     <form id="lf">
-      <label>Your name <input name="name" required maxlength="30" autocomplete="off" placeholder="e.g. Anita"></label>
-      <label>Invite code <input name="code" required autocomplete="off" placeholder="from your ward lead"></label>
+      <label>Your name <small>(only needed with a shared invite code)</small> <input name="name" maxlength="30" autocomplete="off" placeholder="e.g. Anita"></label>
+      <label>Personal access key or invite code <input name="code" required autocomplete="off" placeholder="from your ward lead"></label>
       <button>Enter ward</button>
       <p class="err" role="alert">${esc(err)}</p>
     </form>
