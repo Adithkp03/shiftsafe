@@ -162,3 +162,28 @@ export function shiftSummary(states, { now }) {
     .filter(Boolean);
   return { total, acked, awaiting, escalated, openTasks, ackRate: total ? acked / total : 1, times };
 }
+
+// Escalation view order: not-acknowledged-in-time first, then unacknowledged, then by stability, then bed.
+const RANK = { critical: 0, watch: 1, stable: 2 };
+export function prioritise(states) {
+  const score = (s) => (s.escalated ? 0 : s.status === 'acknowledged' ? 2 : 1);
+  return [...states].sort((a, b) => score(a) - score(b) || (RANK[a.stability] ?? 3) - (RANK[b.stability] ?? 3) || String(a.card.bed).localeCompare(String(b.card.bed)));
+}
+export const needsAttention = (s) => s.escalated || s.status !== 'acknowledged' || s.openTasks.length > 0;
+
+// Plain-text shift report. Synthetic demo content only; makes no clinical judgement.
+export function shiftReportText(states, { now, who = '' } = {}) {
+  const sum = shiftSummary(states, { now });
+  const L = ['SHIFTSAFE HANDOVER REPORT (DEMO - fictional data)', `Generated: ${new Date(now).toISOString()}${who ? ' by ' + who : ''}`,
+    `Acknowledged ${sum.acked}/${sum.total} | not acknowledged in time: ${sum.escalated} | open tasks: ${sum.openTasks}`,
+    'Note: a read-back is text a nurse typed; this app cannot judge whether it is correct.', ''];
+  for (const s of prioritise(states)) {
+    const c = s.card;
+    L.push(`[${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged' : 'awaiting acknowledgement'}] ${c.bed} (${c.ageSex}) - ${s.stability}`);
+    L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
+    for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
+    for (const a of s.readBacks) L.push(`  Read-back by ${a.by}: ${a.readBack}`);
+    L.push('');
+  }
+  return L.join('\n');
+}
