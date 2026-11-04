@@ -42,6 +42,8 @@ function renderLogin(err = '') {
       messages = await transport.history();
       transport.onMessages((m) => { messages = messages.concat(m); render(); });
       render(); setInterval(render, 1000);
+      // A user who was just added to the ward can query history before the server finishes the join; refresh a few times (reducer dedupes by id).
+      for (const ms of [2500, 6000, 12000]) setTimeout(async () => { try { const h = await transport.history(); if (h.length) { messages = messages.concat(h); render(); } } catch { /* next try */ } }, ms);
     } catch (err) { renderLogin(err.message); }
   };
 }
@@ -80,7 +82,20 @@ function render() {
   const cardsHtml = states.length ? states.map(cardHtml).join('')
     : `<p class="empty">No handover cards yet. ${me.role === 'out' ? 'Add one with the form, or load the fictional demo ward.' : 'Cards appear here as soon as the outgoing nurse posts them.'}</p>`;
   // The 1s tick must not rebuild the DOM when nothing changed, or a half-typed read-back is wiped.
-  if (cardsHtml !== lastCards) { lastCards = cardsHtml; $('#cards').innerHTML = cardsHtml; }
+  if (cardsHtml !== lastCards) {
+    lastCards = cardsHtml;
+    // Keep half-typed read-backs (and focus/caret) when a new message re-renders the list.
+    const drafts = {}; let focus = null;
+    for (const f of document.querySelectorAll('#cards form.ack')) {
+      const ta = f.querySelector('textarea'); if (ta.value) drafts[f.dataset.card] = ta.value;
+      if (document.activeElement === ta) focus = { card: f.dataset.card, start: ta.selectionStart, end: ta.selectionEnd };
+    }
+    $('#cards').innerHTML = cardsHtml;
+    for (const f of document.querySelectorAll('#cards form.ack')) {
+      const ta = f.querySelector('textarea'), d = drafts[f.dataset.card]; if (d != null) ta.value = d;
+      if (focus && focus.card === f.dataset.card) { ta.focus(); ta.setSelectionRange(focus.start, focus.end); }
+    }
+  }
 }
 
 function cardHtml(s) {
