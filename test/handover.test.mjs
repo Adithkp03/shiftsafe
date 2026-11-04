@@ -177,3 +177,13 @@ test('closed tasks survive a card correction; garbage entries are ignored', () =
   const m = [msg(card({ cardId: 'a' })), msg({ type: TASK_TYPE, cardId: 'a', taskId: 't1' }), msg(card({ cardId: 'a', assessment: 'x' })), null, undefined, {}];
   assert.deepEqual(deriveState(m, { now: T0 })[0].openTasks.map((t) => t.id), ['t2']);
 });
+
+import { prioritise, needsAttention, shiftReportText } from '../core/handover.mjs';
+test('escalation order and report text', () => {
+  const mk = (bed, stability, status, escalated, open = []) => ({ card: { bed, ageSex: '1 F', situation: 's', background: 'b', assessment: 'a', recommendation: 'r', pendingTasks: [] }, stability, status, escalated, openTasks: open, readBacks: [], acknowledgedBy: [] });
+  const a = mk('B1', 'critical', 'acknowledged', false), b = mk('B2', 'stable', 'awaiting', true), c = mk('B3', 'watch', 'awaiting', false);
+  assert.deepEqual(prioritise([a, c, b]).map((s) => s.card.bed), ['B2', 'B3', 'B1']);
+  assert.equal(needsAttention(a), false); assert.equal(needsAttention(c), true);
+  const t = shiftReportText([a, b, c], { now: 0, who: 'X' });
+  assert.match(t, /DEMO/); assert.ok(t.indexOf('B2') < t.indexOf('B1'));
+});
