@@ -1,0 +1,7 @@
+// Fictional demo text. No real patients. These are example strings for the UI, not guidance from the app.
+export const SEED = [
+  { cardId: 'b01', bed: 'Bed 1', ageSex: '67 M', situation: 'Day 2 after planned hip surgery', background: 'Fictional history: hypertension', assessment: 'Nurse observed: comfortable, eating, mobilising with help', recommendation: 'Plan as written by the ward doctor: physio at 9am', stability: 'stable', pendingTasks: ['Physio review at 9am'] },
+  { cardId: 'b02', bed: 'Bed 2', ageSex: '45 F', situation: 'Admitted overnight with abdominal pain', background: 'Fictional: no known allergies recorded', assessment: 'Nurse observed: pain score charted every 2h, still uncomfortable', recommendation: 'Doctor review due at 7am round', stability: 'watch', pendingTasks: ['Chart pain score at 2am and 4am', 'Tell doctor on 7am round'] },
+  { cardId: 'b03', bed: 'Bed 3', ageSex: '8 M', situation: 'Observation after fall, awaiting scan result', background: 'Fictional: previously healthy', assessment: 'Nurse observed: awake, playing, parents at bedside', recommendation: 'Scan result expected 6am, doctor to decide', stability: 'critical', pendingTasks: ['Call radiology at 6am for result'] },
+  { cardId: 'b04', bed: 'Bed 4', ageSex: '31 F', situation: 'Day 1 after delivery', background: 'Fictional: uncomplicated', assessment: 'Nurse observed: feeding well', recommendation: 'Discharge planning with doctor tomorrow', stability: 'stable', noPendingTasks: true, pendingTasks: [] },
+];
