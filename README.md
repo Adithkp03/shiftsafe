@@ -44,3 +44,6 @@ Prints one key (`ssk1...`) to stdout and its id to stderr. The person pastes the
 
 ## Deployment
 Vercel serverless functions in `api/` plus the Vite client in `dist/`. Set the env vars above in the host; keep the repo private.
+
+## Status
+MVP plus personal access keys. See limits above.
