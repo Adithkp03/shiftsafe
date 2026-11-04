@@ -187,3 +187,12 @@ test('escalation order and report text', () => {
   const t = shiftReportText([a, b, c], { now: 0, who: 'X' });
   assert.match(t, /DEMO/); assert.ok(t.indexOf('B2') < t.indexOf('B1'));
 });
+
+import { fmtDur, timingText } from '../core/handover.mjs';
+test('timing text', () => {
+  assert.equal(fmtDur(30000), 'under 1 min'); assert.equal(fmtDur(5 * 60000), '5 min'); assert.equal(fmtDur(125 * 60000), '2 h 5 min');
+  assert.equal(timingText({ postedAt: 0 }, 5), '');
+  assert.equal(timingText({ postedAt: 1000, status: 'awaiting' }, 1000 + 4 * 60000), 'waiting 4 min since posting');
+  assert.equal(timingText({ postedAt: 1000, status: 'acknowledged', ackAt: 1000 + 180000 }, 9e9), 'acknowledged 3 min after posting');
+  const r = shiftReportText([], { now: 0 }); assert.match(r, /visual flag only/); assert.match(r, /Scope: all 0 cards/);
+});
