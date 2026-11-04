@@ -34,13 +34,14 @@ function renderLogin(err = '') {
       const s = await r.json();
       if (!r.ok) throw new Error(s.error || 'could not sign in');
       me = { userId: s.userId, name: s.name, role: s.role };
+      if (typeof s.serverNow === 'number') skew = Date.now() - s.serverNow;
       transport = await createTransport(s);
       transport.onStatus?.(async (x) => {
         const was = online; online = x === 'online'; render();
         if (online && !was) { try { messages = messages.concat(await transport.history()); render(); } catch { notice = 'Reconnected, but could not refresh history. Reload the page.'; render(); } } // dedupe happens in the reducer
       });
       try { messages = await transport.history(); } catch { notice = 'Could not load earlier cards yet. Retrying...'; }
-      transport.onMessages((m) => { messages = messages.concat(m); render(); });
+      transport.onMessages((m) => { sampleSkew(m); messages = messages.concat(m); render(); });
       render(); setInterval(render, 1000);
       // A user who was just added to the ward can query history before the server finishes the join; refresh a few times (reducer dedupes by id).
       let loaded = notice === '';
@@ -58,9 +59,15 @@ async function send(payload) {
   catch (e) { notice = 'Could not send: ' + e.message + '. Check your connection and try again.'; render(); }
 }
 
+// Clock skew: card/ack times come from server timestamps, so "now" must be on the same clock. Start from the
+// session response's server time, then refine with live-delivered messages (smallest local-minus-server gap is
+// the best estimate; it is accurate to about the network latency, not exactly).
+let skew = 0, liveSkew = null;
+const serverNow = () => Date.now() - skew;
+function sampleSkew(msgs) { for (const m of msgs) if (typeof m.ts === 'number' && m.ts > 0) { const g = Date.now() - m.ts; if (liveSkew == null || g < liveSkew) liveSkew = g; } if (liveSkew != null) skew = liveSkew; }
 let lastCards = null, lastSummary = null, attentionOnly = false;
 function render() {
-  const now = Date.now();
+  const now = serverNow();
   const all = deriveState(messages, { now, escalateAfterMs: ESCALATE_MS });
   const states = prioritise(attentionOnly ? all.filter(needsAttention) : all);
   const sum = shiftSummary(all, { now });
@@ -136,7 +143,7 @@ function wireStatic() {
   app.addEventListener('click', async (e) => {
     if (e.target.closest('#attn')) { attentionOnly = !attentionOnly; render(); return; }
     if (e.target.closest('#dl')) {
-      const now = Date.now(), txt = shiftReportText(deriveState(messages, { now, escalateAfterMs: ESCALATE_MS }), { now, who: me.name });
+      const now = serverNow(), txt = shiftReportText(deriveState(messages, { now, escalateAfterMs: ESCALATE_MS }), { now, who: me.name });
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' })); a.download = 'shiftsafe-handover-report.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); return;
     }
     const t = e.target.closest('#seed'); if (!t) return;
