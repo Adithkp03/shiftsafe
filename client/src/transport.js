@@ -53,7 +53,7 @@ const decode = (m) => {
     async history() {
       const q = BaseChannel.createMessagesQuery({ channelIdentifier: group.identifier, startTime: Date.now(), pageSize: 100, isAscending: false });
       const { code, data: page } = await q.loadNextPage();
-      if (code !== 0 || !page) return [];
+      if (code !== 0 || !page) throw new Error(`history failed (code ${code})`);
       return page.data.map(decode).filter(Boolean).reverse();
     },
     async send(payload) {
