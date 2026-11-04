@@ -25,19 +25,25 @@ Live mode needs these server environment variables (never commit values):
     SS_SIGNING_KEY=<secret> node scripts/issue-credential.mjs --name Priya --role out --ward wardx --days 14
 Prints one key (`ssk1...`) to stdout and its id to stderr. The person pastes the key into the login form; the name, role and ward come from the signed key and the user id is derived server-side, so nobody can pick or impersonate another identity. Hand keys over through a secret channel, never chat or email in clear.
 
+## Revoking someone
+    NEXCONN_APP_KEY=... NEXCONN_APP_SECRET=... node scripts/revoke-user.mjs --user-id outp1a2b3c4d5e6f --ward wardx
+Expiring a key or listing it in `SS_REVOKED` only stops NEW sign-ins; a person who already has a Nexconn token and an open connection keeps working. `revoke-user.mjs` cuts the live access in three layers: expire the user's Nexconn tokens (reconnect then fails), remove the user from the ward group (history and send are refused), and ban the user (max 30 days, Nexconn's limit; terminates the live connection at once). Nexconn tokens are valid indefinitely by default (a Console setting we did not change), so the first two layers are what keep a revoked person out after the ban ends. Then add the key id (printed by `issue-credential.mjs`) to `SS_REVOKED` and redeploy. Tested live in `test/e2e/revoke.live.e2e.mjs`.
+Failed sign-ins are throttled per client (10 per 10 minutes) in memory per server instance, so on serverless hosting this slows guessing but is not a global limit. Requests over 10 KB or keys over 2000 characters are rejected.
+
 ## Browser tests (need Chrome and `puppeteer-core`, not installed by default)
     npm run build
     node test/e2e/typing.e2e.mjs     # draft survives timer ticks and incoming messages
     node test/e2e/report.e2e.mjs     # report download scope and content, filter keeps drafts, mobile layout
     node test/e2e/auth.e2e.mjs       # personal keys: name from key, tampered/wrong-key/legacy-off rejected
     node test/e2e/skew.e2e.mjs       # device clock hours off does not change overdue status
+    node test/e2e/revoke.live.e2e.mjs # LIVE: revoke cuts an open session and reconnect, other members unaffected
     node test/e2e/live.e2e.mjs       # LIVE Nexconn: reconnect after socket drop, visible history failure
 `live.e2e.mjs` needs the env vars above plus `E2E_OUT_CODE` and `E2E_IN_CODE`; set `CHROME=/path/to/chrome` if needed.
 
 ## Layout
 - `core/handover.mjs` completeness, acknowledgement, overdue flag, timing, report text (pure, tested)
 - `server/auth.mjs` signed personal access keys and the single authenticate() used by the server and the Vercel function
-- `scripts/issue-credential.mjs` issues a key
+- `scripts/issue-credential.mjs` issues a key; `scripts/revoke-user.mjs` cuts live access; `server/throttle.mjs` failed-login throttle
 - `server/` token minting and ward joins (signature per Nexconn docs) plus the local mock relay
 - `api/` Vercel serverless functions (`session`, `config`)
 - `client/` Vite app; `transport.js` has the Nexconn SDK and mock transports
