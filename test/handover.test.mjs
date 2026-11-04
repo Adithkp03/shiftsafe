@@ -10,7 +10,7 @@ const full = {
 };
 const T0 = 1_000_000;
 let seq = 0;
-const msg = (payload, userId) => ({ payload, userId: userId ?? (payload.type === 'SS:ack' ? payload.by : payload.type === 'SS:task-done' ? 'in1' : 'out1'), ts: ++seq });
+const msg = (payload, userId) => ({ payload, userId: userId ?? (payload.type === 'SS:ack' ? payload.by : payload.type === 'SS:task-done' ? 'in1' : 'out1'), ts: T0 + ++seq });
 const RB = 'Bed 12A watch, two tasks pending';
 
 test('complete card passes; every missing field is reported', () => {
@@ -191,7 +191,7 @@ test('escalation order and report text', () => {
 import { fmtDur, timingText } from '../core/handover.mjs';
 test('timing text', () => {
   assert.equal(fmtDur(30000), 'under 1 min'); assert.equal(fmtDur(5 * 60000), '5 min'); assert.equal(fmtDur(125 * 60000), '2 h 5 min');
-  assert.equal(timingText({ postedAt: 0 }, 5), '');
+  assert.equal(timingText({ postedAt: null }, 5), 'time unknown');
   assert.equal(timingText({ postedAt: 1000, status: 'awaiting' }, 1000 + 4 * 60000), 'waiting 4 min since posting');
   assert.equal(timingText({ postedAt: 1000, status: 'acknowledged', ackAt: 1000 + 180000 }, 9e9), 'acknowledged 3 min after posting');
   const r = shiftReportText([], { now: 0 }); assert.match(r, /visual flag only/); assert.match(r, /Scope: all 0 cards/);
@@ -201,4 +201,44 @@ test('report audit lines', () => {
   const st = { card: { bed: 'B', ageSex: '1 F', situation: 's', background: 'b', assessment: 'a', recommendation: 'r', pendingTasks: [] }, stability: 'stable', status: 'acknowledged', escalated: false, openTasks: [], postedAt: 1000, author: 'out1', authorName: 'Priya', readBacks: [{ by: 'in1', at: 5000, readBack: 'text here ok' }], acknowledgedBy: ['in1'], ackAt: 5000 };
   const t = shiftReportText([st], { now: 9000 });
   assert.match(t, /Posted by Priya at 1970-01-01T00:00:01.000Z/); assert.match(t, /Read-back by in1 at 1970-01-01T00:00:05.000Z \(typed text, not validated\)/);
+});
+
+import { validTs, FUTURE_TOLERANCE_MS } from '../core/handover.mjs';
+const mid = (payload, userId, id, ts) => ({ payload, userId, id, ts });
+test('poster-controlled postedAt in the payload is ignored', () => {
+  const now = 50 * 3_600_000;
+  const forged = card({ cardId: 'f', stability: 'critical', postedAt: now - 3_600_000 }); // claims posted 1h ago
+  const [s] = deriveState([mid(forged, 'out1', 'm1', now - 1000)], { now });
+  assert.equal(s.postedAt, now - 1000); assert.equal(s.escalated, false);
+  const future = card({ cardId: 'g', stability: 'critical', postedAt: now + 9e9 });
+  assert.equal(deriveState([mid(future, 'out1', 'm2', now - 11 * 60_000)], { now })[0].escalated, true);
+});
+test('malformed or future transport timestamps mean unknown time, never overdue', () => {
+  const now = 50 * 3_600_000;
+  for (const ts of [undefined, null, NaN, 'x', 0, -5, now + FUTURE_TOLERANCE_MS + 1, Infinity]) {
+    const [s] = deriveState([mid(card({ cardId: 'z', stability: 'critical' }), 'out1', 'mz', ts)], { now });
+    assert.equal(s.postedAt, null, String(ts)); assert.equal(s.escalated, false); assert.equal(timingText(s, now), 'time unknown');
+  }
+  assert.equal(validTs(now + FUTURE_TOLERANCE_MS, now), now + FUTURE_TOLERANCE_MS);
+});
+test('ack time before post time or invalid is not shown as elapsed', () => {
+  const now = 50 * 3_600_000, t = now - 600_000;
+  const c = mid(card({ cardId: 'a1' }), 'out1', 'c', t);
+  const early = mid({ type: ACK_TYPE, cardId: 'a1', readBack: RB }, 'in1', 'a', t - 5000);
+  // replay is ordered by server time, so an ack stamped before its card cannot count
+  assert.equal(deriveState([c, early], { now })[0].status, 'awaiting');
+  const bad = mid({ type: ACK_TYPE, cardId: 'a1', readBack: RB }, 'in1', 'a', NaN);
+  assert.equal(timingText(deriveState([c, bad], { now })[0], now), 'acknowledged (time unknown)');
+  const ok = mid({ type: ACK_TYPE, cardId: 'a1', readBack: RB }, 'in1', 'a', t + 180_000);
+  assert.equal(timingText(deriveState([c, ok], { now })[0], now), 'acknowledged 3 min after posting');
+});
+test('replay and out-of-order delivery do not change post time or duplicate acks', () => {
+  const now = 50 * 3_600_000, t = now - 120_000;
+  const c = mid(card({ cardId: 'r1' }), 'out1', 'c', t), a = mid({ type: ACK_TYPE, cardId: 'r1', readBack: RB }, 'in1', 'a', t + 60_000);
+  const x = deriveState([a, c, c, a, c], { now }), y = deriveState([c, a], { now });
+  assert.deepEqual(x.map((s) => [s.postedAt, s.ackAt, s.readBacks.length]), y.map((s) => [s.postedAt, s.ackAt, s.readBacks.length]));
+  assert.deepEqual(x[0].readBacks.length, 1);
+  // a replayed copy of the card with a later server time (different id) is a correction: original post time is kept
+  const fix = mid(card({ cardId: 'r1', assessment: 'edited' }), 'out1', 'c2', t + 90_000);
+  assert.equal(deriveState([c, a, fix], { now })[0].postedAt, t);
 });
