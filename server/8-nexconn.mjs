@@ -1,0 +1,40 @@
+// Server-side Nexconn Platform API helpers. App Secret never leaves the server.
+// Signature per docs.nexconn.ai/platform-chat-api/prepare-to-use-api/auth:
+//   Signature = SHA1(AppSecret + Nonce + Timestamp), headers App-Key, Nonce, Timestamp, Signature.
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+
+export function signHeaders({ appKey, appSecret, nonce, timestamp, requestId }) {
+  if (!appKey || !appSecret) throw new Error('appKey and appSecret are required');
+  const n = nonce ?? String(parseInt(randomBytes(6).toString('hex'), 16)).slice(0, 18); // max 18 chars
+  const t = String(timestamp ?? Date.now());
+  const signature = createHash('sha1').update(appSecret + n + t).digest('hex');
+  return {
+    'App-Key': appKey,
+    Nonce: n,
+    Timestamp: t,
+    Signature: signature,
+    'X-Request-ID': requestId ?? randomUUID().replaceAll('-', ''),
+    'Content-Type': 'application/json',
+  };
+}
+
+const USER_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+export const isValidUserId = (id) => typeof id === 'string' && USER_ID_RE.test(id);
+
+/** Exchange a userId for an access token via POST {baseUrl}/v4/auth/access-token/issue. */
+export async function issueToken({ baseUrl, appKey, appSecret, userId, name, fetchImpl = fetch }) {
+  if (!isValidUserId(userId)) throw Object.assign(new Error('invalid userId'), { status: 400 });
+  const cleanName = String(name ?? '').trim().slice(0, 64);
+  if (!cleanName) throw Object.assign(new Error('name required'), { status: 400 });
+  const res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/v4/auth/access-token/issue`, {
+    method: 'POST',
+    headers: signHeaders({ appKey, appSecret }),
+    body: JSON.stringify({ userId, name: cleanName }),
+  });
+  if (!res.ok) throw Object.assign(new Error(`Nexconn API HTTP ${res.status}`), { status: 502 });
+  const body = await res.json();
+  if (body.code !== 0 || !body.result?.accessToken) {
+    throw Object.assign(new Error(`Nexconn API code ${body.code}`), { status: 502 });
+  }
+  return { userId: body.result.userId, accessToken: body.result.accessToken };
+}
