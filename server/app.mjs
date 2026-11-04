@@ -27,7 +27,7 @@ export function roleForCode(invites, code) {
 
 export function createApp({ appKey = env.NEXCONN_APP_KEY, appSecret = env.NEXCONN_APP_SECRET, fetchImpl = fetch, staticDir = 'dist', invites } = {}) {
   const live = Boolean(appKey && appSecret);
-  const inv = invites ?? parseInvites(env.SS_INVITES || (live ? '' : 'demo-out:out,demo-in:in'));
+  const inv = invites ?? parseInvites([env.SS_INVITES, env.SS_INVITES_EXTRA].filter(Boolean).join(',') || (live ? '' : 'demo-out:out,demo-in:in'));
   const auth = (req) => sessions.get(req.headers['x-session'] || new URL(req.url, 'http://x').searchParams.get('s') || '');
   const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
   const body = async (req) => { let b = ''; for await (const c of req) { b += c; if (b.length > 20000) throw new Error('too large'); } return b ? JSON.parse(b) : {}; };
