@@ -196,3 +196,9 @@ test('timing text', () => {
   assert.equal(timingText({ postedAt: 1000, status: 'acknowledged', ackAt: 1000 + 180000 }, 9e9), 'acknowledged 3 min after posting');
   const r = shiftReportText([], { now: 0 }); assert.match(r, /visual flag only/); assert.match(r, /Scope: all 0 cards/);
 });
+
+test('report audit lines', () => {
+  const st = { card: { bed: 'B', ageSex: '1 F', situation: 's', background: 'b', assessment: 'a', recommendation: 'r', pendingTasks: [] }, stability: 'stable', status: 'acknowledged', escalated: false, openTasks: [], postedAt: 1000, author: 'out1', authorName: 'Priya', readBacks: [{ by: 'in1', at: 5000, readBack: 'text here ok' }], acknowledgedBy: ['in1'], ackAt: 5000 };
+  const t = shiftReportText([st], { now: 9000 });
+  assert.match(t, /Posted by Priya at 1970-01-01T00:00:01.000Z/); assert.match(t, /Read-back by in1 at 1970-01-01T00:00:05.000Z \(typed text, not validated\)/);
+});
