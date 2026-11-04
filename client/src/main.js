@@ -24,7 +24,6 @@ function renderLogin(err = '') {
       <button>Enter ward</button>
       <p class="err" role="alert">${esc(err)}</p>
     </form>
-    <p class="note">Demo codes (local demo only): <code>demo-out</code> outgoing nurse, <code>demo-in</code> incoming nurse.</p>
   </main>`;
   $('#lf').onsubmit = async (e) => {
     e.preventDefault();
