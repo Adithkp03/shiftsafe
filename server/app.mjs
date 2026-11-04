@@ -3,6 +3,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { authenticate, legacyEnabled } from './auth.mjs';
 import { issueToken, isValidUserId, ensureWardMember, isValidWardId } from './nexconn.mjs';
 
 const env = process.env;
@@ -36,19 +37,16 @@ export function createApp({ appKey = env.NEXCONN_APP_KEY, appSecret = env.NEXCON
       const url = new URL(req.url, 'http://x');
       if (req.method === 'GET' && url.pathname === '/api/config') return send(res, 200, { mode: live ? 'nexconn' : 'mock', appKey: live ? appKey : null });
       if (req.method === 'POST' && url.pathname === '/api/session') {
-        const { name, code } = await body(req);
-        const grant = roleForCode(inv, code);
-        if (!grant) return send(res, 403, { error: 'invalid invite code' });
-        const clean = String(name ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 30);
-        if (!clean) return send(res, 400, { error: 'name must contain letters or digits' });
-        const { role, ward } = grant;
-        const userId = role + clean; // role is server-assigned and bound to the id
+        const b = await body(req);
+        const r = authenticate({ body: b, env, legacy: legacyEnabled(env) ? inv : null, roleForCode });
+        if (!r.ok) return send(res, r.status, { error: r.error });
+        const { role, ward, userId, name } = r;
         const sessionToken = randomBytes(18).toString('hex');
         sessions.set(sessionToken, { userId, ward });
-        if (!live) return send(res, 200, { mode: 'mock', userId, role, ward, name: String(name).slice(0, 30), sessionToken, serverNow: Date.now() });
-        const t = await issueToken({ baseUrl: BASE_URL, appKey, appSecret, userId, name: String(name).trim().slice(0, 30), fetchImpl });
+        if (!live) return send(res, 200, { mode: 'mock', userId, role, ward, name, sessionToken, serverNow: Date.now() });
+        const t = await issueToken({ baseUrl: BASE_URL, appKey, appSecret, userId, name, fetchImpl });
         const groupId = await ensureWardMember({ baseUrl: BASE_URL, appKey, appSecret, wardId: ward, userId: t.userId, fetchImpl });
-        return send(res, 200, { mode: 'nexconn', appKey, groupId, userId: t.userId, role, name: String(name).slice(0, 30), token: t.accessToken, sessionToken, serverNow: Date.now() });
+        return send(res, 200, { mode: 'nexconn', appKey, groupId, userId: t.userId, role, name, token: t.accessToken, sessionToken, serverNow: Date.now() });
       }
       if (url.pathname.startsWith("/api/mock/") && (live || !auth(req))) return send(res, 401, { error: 'sign in first' });
       const sess = auth(req);
