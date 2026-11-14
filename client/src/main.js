@@ -115,7 +115,13 @@ function render() {
 function cardHtml(s, now) {
   const c = s.card;
   const canAck = me.role === 'in' && !s.acknowledgedBy.includes(me.userId);
-  const tasks = c.pendingTasks.map((t) => { const open = s.openTasks.some((o) => o.id === t.id); return `<li class="${open ? '' : 'done'}"><label><input type="checkbox" data-task="${esc(c.cardId)}|${esc(t.id)}" ${open ? '' : 'checked disabled'}> ${esc(t.text)}</label></li>`; }).join('');
+  const tasks = c.pendingTasks.map((t) => {
+    const open = s.openTasks.some((o) => o.id === t.id);
+    const d = !open && s.doneTasks ? s.doneTasks.get(t.id) : null;
+    const who = d ? esc(d.name || nice(d.by)) : '';
+    const when = d && d.at ? ' at ' + new Date(d.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<li class="${open ? '' : 'done'}"><label><input type="checkbox" data-task="${esc(c.cardId)}|${esc(t.id)}" ${open ? '' : 'checked disabled'}> ${esc(t.text)}</label>${who ? `<small class="doneby">done by ${who}${when}</small>` : ''}</li>`;
+  }).join('');
   const rb = s.readBacks.map((a) => `<p class="rb"><b>${esc(a.name || nice(a.by))} read back:</b> ${esc(a.readBack)}</p>`).join('');
   return `<article class="card ${s.stability} ${s.status} ${s.escalated ? 'esc' : ''}">
     <div class="top"><b>${esc(c.bed)}</b> <span>${esc(c.ageSex)}</span> <em class="pill ${s.stability}">${s.stability}</em>
@@ -125,18 +131,19 @@ function cardHtml(s, now) {
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
     <small>Handed over by ${esc(c.authorName || nice(c.author))}${timingText(s, now) ? ' · ' + esc(timingText(s, now)) : ''}</small>
     ${rb}
-    ${canAck ? `<form class="ack" data-card="${esc(c.cardId)}"><label>Read back in your own words (at least ${MIN_READBACK} characters)<textarea name="rb" rows="2" required minlength="${MIN_READBACK}"></textarea></label><button>Acknowledge</button></form>` : ''}
+    ${canAck ? `<form class="ack" data-card="${esc(c.cardId)}"><small class="rbhint">Cover in your read-back: the bed, the plan (doctor's orders), and ${s.openTasks.length ? s.openTasks.length + ' open task' + (s.openTasks.length > 1 ? 's' : '') : 'that there are no pending tasks'}.</small><label>Read back in your own words (at least ${MIN_READBACK} characters)<textarea name="rb" rows="2" required minlength="${MIN_READBACK}"></textarea></label><button>Acknowledge</button></form>` : ''}
+    ${me.role === 'out' && s.card.author === me.userId ? `<button type="button" class="ghost correct" data-correct="${esc(c.cardId)}">Correct this card</button>` : ''}
   </article>`;
 }
 
 function formHtml() {
-  return `<aside class="side"><h3>New handover card</h3><form id="form">
+  return `<aside class="side"><h3 id="formtitle">New handover card</h3><form id="form">
     ${[['bed', 'Bed / room'], ['ageSex', 'Age and sex'], ['situation', 'Situation'], ['background', 'Background'], ['assessment', 'Assessment (what you observed)'], ['recommendation', 'Plan (as ordered by the doctor)']]
       .map(([k, l]) => `<label>${l}<input name="${k}" autocomplete="off"></label>`).join('')}
     <label>Stability (your judgement) <select name="stability"><option value="">choose</option><option>stable</option><option>watch</option><option>critical</option></select></label>
     <label>Pending tasks (one per line) <textarea name="tasks" rows="3"></textarea></label>
     <label class="chk"><input type="checkbox" name="none"> No pending tasks</label>
-    <div id="meter"></div><button>Post card</button></form></aside>`;
+    <div id="meter"></div><button id="postbtn">Post card</button><button type="button" id="canceledit" class="ghost" hidden>Cancel correction</button></form></aside>`;
 }
 
 function wireStatic() {
@@ -157,11 +164,30 @@ function wireStatic() {
   });
   app.addEventListener('change', (e) => {
     const t = e.target; if (!t.dataset?.task) return;
-    const [cardId, taskId] = t.dataset.task.split('|'); send({ type: TASK_TYPE, cardId, taskId });
+    const [cardId, taskId] = t.dataset.task.split('|'); send({ type: TASK_TYPE, cardId, taskId, name: me.name });
   });
   const f = $('#form'); if (!f) return;
-  const draft = () => { const v = Object.fromEntries(new FormData(f)); return { ...v, cardId: 'c' + Date.now(), pendingTasks: (v.tasks || '').split('\n'), noPendingTasks: v.none === 'on' }; };
+  let editing = null; // cardId being corrected; null = composing a new card
+  const setEdit = (id) => {
+    editing = id;
+    $('#formtitle').textContent = id ? 'Correct handover card' : 'New handover card';
+    $('#postbtn').textContent = id ? 'Post correction' : 'Post card';
+    $('#canceledit').hidden = !id;
+  };
+  app.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-correct]'); if (!b) return;
+    const st = deriveState(messages, { now: serverNow(), escalateAfterMs: ESCALATE_MS }).find((x) => x.cardId === b.dataset.correct);
+    if (!st || st.card.author !== me.userId) return;
+    const c = st.card;
+    f.elements.bed.value = c.bed; f.elements.ageSex.value = c.ageSex; f.elements.situation.value = c.situation;
+    f.elements.background.value = c.background; f.elements.assessment.value = c.assessment; f.elements.recommendation.value = c.recommendation;
+    f.elements.stability.value = c.stability; f.elements.tasks.value = c.pendingTasks.map((t) => t.text).join('\n');
+    f.elements.none.checked = c.pendingTasks.length === 0;
+    setEdit(c.cardId); meter(); f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  $('#canceledit').onclick = () => { setEdit(null); f.reset(); meter(); };
+  const draft = () => { const v = Object.fromEntries(new FormData(f)); return { ...v, cardId: editing || 'c' + Date.now(), pendingTasks: (v.tasks || '').split('\n'), noPendingTasks: v.none === 'on' }; };
   const meter = () => { const c = completeness(draft()); $('#meter').innerHTML = `<div class="bar"><i style="width:${(c.score / c.total) * 100}%"></i></div><small>${c.score}/${c.total} fields filled${c.missing.length ? ' - still needed: ' + c.missing.map((k) => REQUIRED_ITEMS.find((r) => r.key === k).label.split(':')[0]).join(', ') : ' - ready to post'}</small>`; };
   f.oninput = meter; meter();
-  f.onsubmit = async (e) => { e.preventDefault(); try { await send(buildCard(draft(), { author: me.name, shiftId: 'night', now: Date.now() })); f.reset(); meter(); } catch (err) { if (err.code === 'INCOMPLETE') meter(); else { notice = err.message; render(); } } };
+  f.onsubmit = async (e) => { e.preventDefault(); try { await send(buildCard(draft(), { author: me.name, shiftId: 'night', now: Date.now() })); f.reset(); setEdit(null); meter(); } catch (err) { if (err.code === 'INCOMPLETE') meter(); else { notice = err.message; render(); } } };
 }
