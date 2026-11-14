@@ -116,7 +116,14 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       // Time comes from the transport's server timestamp (m.ts), never from the payload: a poster-controlled
       // postedAt must not drive overdue status. A corrected card keeps the original posting time.
       const at = prev ? prev.postedAt : validTs(m.ts, now);
-      cards.set(p.cardId, { card: { ...p, postedAt: undefined, sender: m.userId, author: m.userId }, postedAt: at, acks: [], doneTasks: new Map(prev ? prev.doneTasks : []) });
+      // A correction replaces the card and voids earlier acknowledgements (acks: []) - the new text was
+      // never read back. Task completions survive only where the task id still has the SAME text: task
+      // ids are positional, so an edited or reordered task must be closed again, not inherit a "done".
+      const prevText = new Map(prev ? prev.card.pendingTasks.map((t) => [t.id, t.text]) : []);
+      const kept = new Map();
+      if (prev) for (const t of p.pendingTasks) if (prev.doneTasks.has(t.id) && prevText.get(t.id) === t.text) kept.set(t.id, prev.doneTasks.get(t.id));
+      const editedAt = prev ? validTs(m.ts, now) : null;
+      cards.set(p.cardId, { card: { ...p, postedAt: undefined, sender: m.userId, author: m.userId }, postedAt: at, acks: [], doneTasks: kept, editedAt, edits: (prev ? prev.edits : 0) + (prev ? 1 : 0) });
     } else if (p.type === ACK_TYPE) {
       const s = cards.get(p.cardId);
       if (!s || role !== 'in') continue; // only incoming nurses acknowledge
@@ -139,7 +146,7 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
     }
   }
   const out = [];
-  for (const { card, postedAt, acks, doneTasks } of cards.values()) {
+  for (const { card, postedAt, acks, doneTasks, editedAt, edits } of cards.values()) {
     const acknowledged = acks.length > 0;
     // Unknown or invalid post time means we cannot say it is overdue.
     const overdue = !acknowledged && postedAt != null && now - postedAt >= escalateAfterMs;
@@ -158,6 +165,8 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       escalated,
       openTasks,
       doneTasks,
+      editedAt: editedAt || null,
+      edits: edits || 0,
       postedAt,
       ackAt: acks.length ? acks[0].at : null,
       card,
@@ -224,6 +233,7 @@ export function shiftReportText(states, { now, who = '', escalateAfterMs = DEMO_
     }
     for (const a of s.readBacks) L.push(`  Read-back by ${a.name || a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
     if (s.postedAt != null) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
+    if (s.editedAt) L.push(`  Corrected since posting: edit ${s.edits} at ${new Date(s.editedAt).toISOString()} (replaced the previous version; earlier acknowledgements were voided and the current card awaits a fresh read-back)`);
     L.push('');
   }
   return L.join('\n');
