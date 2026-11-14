@@ -116,10 +116,10 @@ function cardHtml(s, now) {
   const c = s.card;
   const canAck = me.role === 'in' && !s.acknowledgedBy.includes(me.userId);
   const tasks = c.pendingTasks.map((t) => { const open = s.openTasks.some((o) => o.id === t.id); return `<li class="${open ? '' : 'done'}"><label><input type="checkbox" data-task="${esc(c.cardId)}|${esc(t.id)}" ${open ? '' : 'checked disabled'}> ${esc(t.text)}</label></li>`; }).join('');
-  const rb = s.readBacks.map((a) => `<p class="rb"><b>${esc(nice(a.by))} read back:</b> ${esc(a.readBack)}</p>`).join('');
+  const rb = s.readBacks.map((a) => `<p class="rb"><b>${esc(a.name || nice(a.by))} read back:</b> ${esc(a.readBack)}</p>`).join('');
   return `<article class="card ${s.stability} ${s.status} ${s.escalated ? 'esc' : ''}">
     <div class="top"><b>${esc(c.bed)}</b> <span>${esc(c.ageSex)}</span> <em class="pill ${s.stability}">${s.stability}</em>
-      <span class="st">${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged by ' + esc(s.acknowledgedBy.map(nice).join(', ')) : 'awaiting acknowledgement'}</span></div>
+      <span class="st">${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged by ' + esc(s.readBacks.map((a) => a.name || nice(a.by)).join(', ')) : 'awaiting acknowledgement'}</span></div>
     <dl><dt>Situation</dt><dd>${esc(c.situation)}</dd><dt>Background</dt><dd>${esc(c.background)}</dd>
     <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (written by outgoing nurse from doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
@@ -153,7 +153,7 @@ function wireStatic() {
   app.addEventListener('submit', (e) => {
     const f = e.target.closest('.ack'); if (!f) return;
     e.preventDefault();
-    send({ type: ACK_TYPE, cardId: f.dataset.card, readBack: new FormData(f).get('rb') });
+    send({ type: ACK_TYPE, cardId: f.dataset.card, readBack: new FormData(f).get('rb'), name: me.name });
   });
   app.addEventListener('change', (e) => {
     const t = e.target; if (!t.dataset?.task) return;
