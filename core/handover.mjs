@@ -233,7 +233,10 @@ export function shiftReportText(states, { now, who = '', escalateAfterMs = DEMO_
     }
     for (const a of s.readBacks) L.push(`  Read-back by ${a.name || a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
     if (s.postedAt != null) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
-    if (s.editedAt) L.push(`  Corrected since posting: edit ${s.edits} at ${new Date(s.editedAt).toISOString()} (replaced the previous version; earlier acknowledgements were voided and the current card awaits a fresh read-back)`);
+    if (s.editedAt) {
+      const freshAck = s.readBacks.some((a) => a.at != null && a.at >= s.editedAt);
+      L.push(`  Corrected since posting: edit ${s.edits} at ${new Date(s.editedAt).toISOString()} (replaced the previous version; earlier acknowledgements were voided${freshAck ? ' and a fresh read-back was recorded after this edit' : ' and the current card awaits a fresh read-back'})`);
+    }
     L.push('');
   }
   return L.join('\n');
