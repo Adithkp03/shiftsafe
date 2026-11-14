@@ -86,9 +86,9 @@ function render() {
   $('#net').innerHTML = online ? '' : '<span class="off">offline - changes will not send</span>';
   $('#notice').textContent = notice;
   const summaryHtml = `
-    <div><b>${sum.acked}/${sum.total}</b><small>acknowledged</small></div>
-    <div class="${sum.escalated ? 'bad' : ''}"><b>${sum.escalated}</b><small>not acknowledged in time</small></div>
-    <div><b>${sum.openTasks}</b><small>open tasks</small></div>
+    <div class="stat"><b>${sum.acked}/${sum.total}</b><small>acknowledged</small></div>
+    <div class="stat${sum.escalated ? ' bad' : ''}"><b>${sum.escalated}</b><small>not acknowledged in time</small></div>
+    <div class="stat"><b>${sum.openTasks}</b><small>open tasks</small></div>
     <div class="grow"><div class="bar"><i style="width:${sum.total === 0 ? 0 : Math.round(sum.ackRate * 100)}%"></i></div><small>${sum.total === 0 ? 'no cards yet' : sum.awaiting === 0 ? 'all cards acknowledged' : sum.awaiting + ' awaiting acknowledgement'}</small></div>
     <div class="acts"><button id="attn" class="ghost" aria-pressed="${attentionOnly}">${attentionOnly ? 'Showing: needs attention - show all' : 'Show only cards needing attention'}</button><button id="dl" class="ghost">Download shift report</button>
     ${me.role === 'out' ? '<button id="seed" class="ghost">Load fictional demo ward</button>' : ''}</div>`;
@@ -119,7 +119,7 @@ function cardHtml(s, now) {
   const rb = s.readBacks.map((a) => `<p class="rb"><b>${esc(a.name || nice(a.by))} read back:</b> ${esc(a.readBack)}</p>`).join('');
   return `<article class="card ${s.stability} ${s.status} ${s.escalated ? 'esc' : ''}">
     <div class="top"><b>${esc(c.bed)}</b> <span>${esc(c.ageSex)}</span> <em class="pill ${s.stability}">${s.stability}</em>
-      <span class="st">${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged by ' + esc(s.readBacks.map((a) => a.name || nice(a.by)).join(', ')) : 'awaiting acknowledgement'}</span></div>
+      <span class="st ${s.escalated ? 'bad' : s.status}">${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged by ' + esc(s.readBacks.map((a) => a.name || nice(a.by)).join(', ')) : 'awaiting acknowledgement'}</span></div>
     <dl><dt>Situation</dt><dd>${esc(c.situation)}</dd><dt>Background</dt><dd>${esc(c.background)}</dd>
     <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (written by outgoing nurse from doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
