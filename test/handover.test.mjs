@@ -289,3 +289,47 @@ test('shift report attributes completed tasks with name and time', () => {
   assert.match(t, /\[x\] done by Anita at \d{4}-\d{2}-\d{2}T/);
   assert.match(t, /\[ \] OPEN: Call lab for report/);
 });
+
+test('a correction from a different sender cannot supersede the card', () => {
+  const m = [
+    msg(card({ cardId: 'a', situation: 'original' }), 'out1'),
+    msg(card({ cardId: 'a', situation: 'hijacked' }), 'out2'),
+  ];
+  const s = deriveState(m, { now: T0 + 10 });
+  assert.equal(s[0].card.situation, 'original');
+  assert.equal(s[0].edits, 0);
+});
+
+test('a correction voids the earlier acknowledgement and needs a fresh read-back', () => {
+  const m = [
+    msg(card({ cardId: 'a' }), 'out1'),
+    msg({ type: ACK_TYPE, cardId: 'a', readBack: 'bed 1 hip surgery, physio at 9am' }, 'in1'),
+    msg(card({ cardId: 'a', situation: 'updated situation' }), 'out1'),
+  ];
+  const s = deriveState(m, { now: T0 + 10 });
+  assert.equal(s[0].status, 'awaiting');
+  assert.equal(s[0].readBacks.length, 0);
+  assert.equal(s[0].edits, 1);
+  assert.ok(s[0].editedAt > 0);
+  assert.match(shiftReportText(s, { now: T0 + 10 }), /Corrected since posting: edit 1 at/);
+});
+
+test('task completions survive a correction only when the task text is unchanged', () => {
+  const base = card({ cardId: 'a', pendingTasks: ['Call lab for report', 'Repeat obs at 2am'] });
+  const edited = card({ cardId: 'a', pendingTasks: ['Repeat obs at 2am', 'Call lab for report'] }); // reordered: ids swap meaning
+  const m = [
+    msg(base, 'out1'),
+    msg({ type: TASK_TYPE, cardId: 'a', taskId: 't1', name: 'Anita' }, 'in1'),
+    msg({ type: TASK_TYPE, cardId: 'a', taskId: 't2', name: 'Anita' }, 'in1'),
+    msg(edited, 'out1'),
+  ];
+  const s = deriveState(m, { now: T0 + 10 });
+  // t1 was "Call lab" done; after reorder t1 is "Repeat obs" (different text) -> completion dropped.
+  // t2 was "Repeat obs" done; after reorder t2 is "Call lab" (different text) -> dropped too.
+  assert.equal(s[0].doneTasks.size, 0);
+  assert.equal(s[0].openTasks.length, 2);
+  const m2 = [msg(base, 'out1'), msg({ type: TASK_TYPE, cardId: 'a', taskId: 't1', name: 'Anita' }, 'in1'), msg(card({ cardId: 'a', pendingTasks: ['Call lab for report', 'Repeat obs at 2am'], situation: 'typo fixed' }), 'out1')];
+  const s2 = deriveState(m2, { now: T0 + 10 });
+  assert.equal(s2[0].doneTasks.get('t1').name, 'Anita'); // same id, same text -> kept
+  assert.equal(s2[0].openTasks.length, 1);
+});
