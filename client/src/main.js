@@ -112,6 +112,14 @@ function render() {
   }
 }
 
+function fmtWhen(ts, now) {
+  const d = new Date(ts);
+  const sameDay = new Date(now).toDateString() === d.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 function cardHtml(s, now) {
   const c = s.card;
   const canAck = me.role === 'in' && !s.acknowledgedBy.includes(me.userId);
@@ -129,7 +137,7 @@ function cardHtml(s, now) {
     <dl><dt>Situation</dt><dd>${esc(c.situation)}</dd><dt>Background</dt><dd>${esc(c.background)}</dd>
     <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
-    <small>Handed over by ${esc(c.authorName || nice(c.author))}${timingText(s, now) ? ' · ' + esc(timingText(s, now)) : ''}${s.editedAt ? ` · corrected ${new Date(s.editedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - read-back needed again` : ''}</small>
+    <small>Handed over by ${esc(c.authorName || nice(c.author))}${timingText(s, now) ? ' · ' + esc(timingText(s, now)) : ''}${s.editedAt ? ` · corrected ${fmtWhen(s.editedAt, now)} - read-back needed again` : ''}</small>
     ${rb}
     ${canAck ? `<form class="ack" data-card="${esc(c.cardId)}"><small class="rbhint">Cover in your read-back: the bed, the plan (doctor's orders), and ${s.openTasks.length ? s.openTasks.length + ' open task' + (s.openTasks.length > 1 ? 's' : '') : 'that there are no pending tasks'}.</small><label>Read back in your own words (at least ${MIN_READBACK} characters)<textarea name="rb" rows="2" required minlength="${MIN_READBACK}"></textarea></label><button>Acknowledge</button></form>` : ''}
     ${me.role === 'out' && s.card.author === me.userId ? `<button type="button" class="ghost correct" data-correct="${esc(c.cardId)}">Correct this card</button>` : ''}
