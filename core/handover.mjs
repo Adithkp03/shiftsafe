@@ -125,7 +125,9 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       // read-back was typed; it does not verify that it is correct or that it shows understanding.
       const rb = typeof p.readBack === 'string' ? p.readBack.trim() : '';
       if (rb.length < MIN_READBACK) continue;
-      s.acks.push({ by: m.userId, at: validTs(m.ts, now), readBack: rb.slice(0, 500) });
+      // Display name is payload data (untrusted, cosmetic only - identity stays m.userId, as with authorName on cards).
+      const nm = typeof p.name === 'string' ? p.name.trim().slice(0, 30) : '';
+      s.acks.push({ by: m.userId, at: validTs(m.ts, now), readBack: rb.slice(0, 500), name: nm });
     } else if (p.type === TASK_TYPE) {
       const s = cards.get(p.cardId);
       if (s && role && s.card.pendingTasks.some((t) => t.id === p.taskId)) s.doneTasks.add(p.taskId);
@@ -209,7 +211,7 @@ export function shiftReportText(states, { now, who = '', escalateAfterMs = DEMO_
     { const tt = timingText(s, now); if (tt) L.push('  Timing: ' + tt); }
     L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
     for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
-    for (const a of s.readBacks) L.push(`  Read-back by ${a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
+    for (const a of s.readBacks) L.push(`  Read-back by ${a.name || a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
     if (s.postedAt != null) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
     L.push('');
   }
