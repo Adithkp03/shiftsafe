@@ -251,3 +251,19 @@ test('one demo threshold: reducer default, boundary, and report agree', () => {
   assert.match(shiftReportText([], { now }), /unacknowledged for 2 min; a demo setting, not a clinical standard/);
   assert.match(shiftReportText([], { now, escalateAfterMs: 300000 }), /for 5 min/);
 });
+
+test('ack carries an optional display name; identity stays the transport sender id', () => {
+  const m = [msg(card()), msg({ type: ACK_TYPE, cardId: 'c1', by: 'in1', readBack: RB, name: 'Meena', at: T0 + 5 })];
+  const s = deriveState(m, { now: T0 + 1000 })[0];
+  assert.equal(s.readBacks[0].name, 'Meena');
+  assert.equal(s.readBacks[0].by, 'in1', 'identity must remain the transport userId');
+
+  const noName = deriveState([msg(card()), msg({ type: ACK_TYPE, cardId: 'c1', by: 'in1', readBack: RB, at: T0 + 5 })], { now: T0 + 1000 })[0];
+  assert.equal(noName.readBacks[0].name, '', 'acks without a name fall back to the sender id at render time');
+
+  const longName = deriveState([msg(card()), msg({ type: ACK_TYPE, cardId: 'c1', by: 'in1', readBack: RB, name: '  ' + 'x'.repeat(80) + '  ', at: T0 + 5 })], { now: T0 + 1000 })[0];
+  assert.equal(longName.readBacks[0].name.length, 30, 'display name is trimmed and capped');
+
+  const nonString = deriveState([msg(card()), msg({ type: ACK_TYPE, cardId: 'c1', by: 'in1', readBack: RB, name: 42, at: T0 + 5 })], { now: T0 + 1000 })[0];
+  assert.equal(nonString.readBacks[0].name, '', 'non-string name ignored');
+});
