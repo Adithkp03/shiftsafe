@@ -267,3 +267,25 @@ test('ack carries an optional display name; identity stays the transport sender 
   const nonString = deriveState([msg(card()), msg({ type: ACK_TYPE, cardId: 'c1', by: 'in1', readBack: RB, name: 42, at: T0 + 5 })], { now: T0 + 1000 })[0];
   assert.equal(nonString.readBacks[0].name, '', 'non-string name ignored');
 });
+
+test('task completion records who and when; first completion wins; old messages without a name still close the task', () => {
+  const m = [
+    msg(card({ cardId: 'a' })),
+    msg({ type: TASK_TYPE, cardId: 'a', taskId: 't1' }), // legacy shape: no name
+    msg({ type: TASK_TYPE, cardId: 'a', taskId: 't2', name: 'Anita' }, 'in9'),
+    msg({ type: TASK_TYPE, cardId: 'a', taskId: 't2', name: 'Bo' }, 'in8'), // duplicate: ignored
+  ];
+  const s = deriveState(m, { now: T0 + 10 });
+  assert.equal(s[0].openTasks.length, 0);
+  const d1 = s[0].doneTasks.get('t1');
+  assert.equal(d1.by, 'in1'); assert.equal(d1.name, ''); assert.ok(d1.at > 0);
+  const d2 = s[0].doneTasks.get('t2');
+  assert.equal(d2.by, 'in9'); assert.equal(d2.name, 'Anita');
+});
+
+test('shift report attributes completed tasks with name and time', () => {
+  const m = [msg(card({ cardId: 'a' })), msg({ type: TASK_TYPE, cardId: 'a', taskId: 't1', name: 'Anita' }, 'in9')];
+  const t = shiftReportText(deriveState(m, { now: T0 + 10 }), { now: T0 + 10 });
+  assert.match(t, /\[x\] done by Anita at \d{4}-\d{2}-\d{2}T/);
+  assert.match(t, /\[ \] OPEN: Call lab for report/);
+});
