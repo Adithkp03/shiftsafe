@@ -312,6 +312,22 @@ test('a correction voids the earlier acknowledgement and needs a fresh read-back
   assert.equal(s[0].edits, 1);
   assert.ok(s[0].editedAt > 0);
   assert.match(shiftReportText(s, { now: T0 + 10 }), /Corrected since posting: edit 1 at/);
+  assert.match(shiftReportText(s, { now: T0 + 10 }), /awaits a fresh read-back/);
+});
+
+test('a fresh read-back after a correction settles the corrected marker', () => {
+  const m = [
+    msg(card({ cardId: 'a' }), 'out1'),
+    msg({ type: ACK_TYPE, cardId: 'a', readBack: 'bed 1 hip surgery, physio at 9am' }, 'in1'),
+    msg(card({ cardId: 'a', situation: 'updated situation' }), 'out1'),
+    msg({ type: ACK_TYPE, cardId: 'a', readBack: 'bed 1, updated situation read back' }, 'in1'),
+  ];
+  const s = deriveState(m, { now: T0 + 10 });
+  assert.equal(s[0].status, 'acknowledged');
+  assert.equal(s[0].readBacks.length, 1);
+  const r = shiftReportText(s, { now: T0 + 10 });
+  assert.match(r, /earlier acknowledgements were voided and a fresh read-back was recorded after this edit/);
+  assert.ok(!/awaits a fresh read-back/.test(r));
 });
 
 test('task completions survive a correction only when the task text is unchanged', () => {
