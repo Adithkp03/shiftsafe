@@ -116,7 +116,7 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       // Time comes from the transport's server timestamp (m.ts), never from the payload: a poster-controlled
       // postedAt must not drive overdue status. A corrected card keeps the original posting time.
       const at = prev ? prev.postedAt : validTs(m.ts, now);
-      cards.set(p.cardId, { card: { ...p, postedAt: undefined, sender: m.userId, author: m.userId }, postedAt: at, acks: [], doneTasks: new Set(prev ? prev.doneTasks : []) });
+      cards.set(p.cardId, { card: { ...p, postedAt: undefined, sender: m.userId, author: m.userId }, postedAt: at, acks: [], doneTasks: new Map(prev ? prev.doneTasks : []) });
     } else if (p.type === ACK_TYPE) {
       const s = cards.get(p.cardId);
       if (!s || role !== 'in') continue; // only incoming nurses acknowledge
@@ -130,7 +130,12 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       s.acks.push({ by: m.userId, at: validTs(m.ts, now), readBack: rb.slice(0, 500), name: nm });
     } else if (p.type === TASK_TYPE) {
       const s = cards.get(p.cardId);
-      if (s && role && s.card.pendingTasks.some((t) => t.id === p.taskId)) s.doneTasks.add(p.taskId);
+      // A task cannot be reopened, so the first completion record wins. Identity is the transport
+      // sender id; the name is cosmetic payload text (untrusted, same rule as ack display names).
+      if (s && role && s.card.pendingTasks.some((t) => t.id === p.taskId) && !s.doneTasks.has(p.taskId)) {
+        const nm = typeof p.name === 'string' ? p.name.trim().slice(0, 30) : '';
+        s.doneTasks.set(p.taskId, { by: m.userId, at: validTs(m.ts, now), name: nm });
+      }
     }
   }
   const out = [];
@@ -152,6 +157,7 @@ export function deriveState(messages, { now, escalateAfterMs = DEMO_ESCALATE_MS 
       readBacks: acks,
       escalated,
       openTasks,
+      doneTasks,
       postedAt,
       ackAt: acks.length ? acks[0].at : null,
       card,
@@ -210,7 +216,12 @@ export function shiftReportText(states, { now, who = '', escalateAfterMs = DEMO_
     L.push(`[${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged' : 'awaiting acknowledgement'}] ${c.bed} (${c.ageSex}) - ${s.stability}`);
     { const tt = timingText(s, now); if (tt) L.push('  Timing: ' + tt); }
     L.push(`  Situation: ${c.situation}`, `  Background: ${c.background}`, `  Assessment: ${c.assessment}`, `  Plan (doctor's orders as written by outgoing nurse): ${c.recommendation}`);
-    for (const t of c.pendingTasks) L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : '[x] done'}: ${t.text}`);
+    for (const t of c.pendingTasks) {
+      const d = s.doneTasks && s.doneTasks.get(t.id);
+      const who = d ? (d.name || d.by) : null;
+      const doneTxt = '[x] done' + (who ? ' by ' + who : '') + (d && d.at ? ' at ' + new Date(d.at).toISOString() : '');
+      L.push(`  ${s.openTasks.some((o) => o.id === t.id) ? '[ ] OPEN' : doneTxt}: ${t.text}`);
+    }
     for (const a of s.readBacks) L.push(`  Read-back by ${a.name || a.by}${a.at ? ' at ' + new Date(a.at).toISOString() : ''} (typed text, not validated): ${a.readBack}`);
     if (s.postedAt != null) L.push(`  Posted by ${s.authorName || s.author} at ${new Date(s.postedAt).toISOString()}`);
     L.push('');
