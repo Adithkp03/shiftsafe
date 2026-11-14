@@ -121,7 +121,7 @@ function cardHtml(s, now) {
     <div class="top"><b>${esc(c.bed)}</b> <span>${esc(c.ageSex)}</span> <em class="pill ${s.stability}">${s.stability}</em>
       <span class="st ${s.escalated ? 'bad' : s.status}">${s.escalated ? 'NOT ACKNOWLEDGED IN TIME' : s.status === 'acknowledged' ? 'acknowledged by ' + esc(s.readBacks.map((a) => a.name || nice(a.by)).join(', ')) : 'awaiting acknowledgement'}</span></div>
     <dl><dt>Situation</dt><dd>${esc(c.situation)}</dd><dt>Background</dt><dd>${esc(c.background)}</dd>
-    <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (written by outgoing nurse from doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
+    <dt>Assessment</dt><dd>${esc(c.assessment)}</dd><dt>Plan (doctor's orders)</dt><dd>${esc(c.recommendation)}</dd></dl>
     ${tasks ? `<ul class="tasks">${tasks}</ul>` : '<p class="none">No pending tasks (stated explicitly)</p>'}
     <small>Handed over by ${esc(c.authorName || nice(c.author))}${timingText(s, now) ? ' · ' + esc(timingText(s, now)) : ''}</small>
     ${rb}
