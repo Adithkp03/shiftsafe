@@ -105,3 +105,48 @@ test('HTTP throttle: repeated bad keys get 429, a different client is unaffected
     assert.equal(await post('8.8.8.8', 'demo-in'), 200);
   } finally { srv.close(); }
 });
+
+import { publicDemoGrant, PUBLIC_DEMO_END } from '../server/auth.mjs';
+test('public demo fixes both identities to a separate ward and rejects all overrides', () => {
+  const before = Date.parse('2026-11-15T00:00:00Z');
+  const a = publicDemoGrant({ demoRole: 'out' }, before), b = publicDemoGrant({ demoRole: 'in' }, before);
+  assert.equal(a.ok, true); assert.equal(b.ok, true);
+  assert.equal(a.ward, 'publicjudge2026'); assert.equal(a.ward, b.ward);
+  assert.notEqual(a.userId, b.userId); assert.equal(a.kind, 'public-demo');
+  for (const k of ['ward', 'userId', 'name', 'role', 'code', 'key', 'token']) {
+    assert.equal(publicDemoGrant({ demoRole: 'out', [k]: 'override' }, before).ok, false);
+  }
+  for (const r of ['admin', '', null, {}, ['out']]) assert.equal(publicDemoGrant({ demoRole: r }, before).ok, false);
+  assert.equal(publicDemoGrant({ code: 'bad' }, before), null);
+  assert.equal(publicDemoGrant({ demoRole: 'out' }, PUBLIC_DEMO_END).ok, false);
+  assert.equal(publicDemoGrant({ demoRole: 'out' }, before, { SS_PUBLIC_DEMO: '0' }).ok, false);
+});
+
+test('deployed session handler keeps ordinary authentication locked and fixes demo membership', async () => {
+  const { default: handler } = await import('../api/session.js');
+  const saved = { ...process.env }, oldFetch = globalThis.fetch, calls = [];
+  process.env.NEXCONN_APP_KEY = 'test-client-id'; process.env.NEXCONN_APP_SECRET = 'test-server-secret';
+  process.env.SS_LEGACY_INVITES = '0'; process.env.SS_SIGNING_KEY = KEY;
+  globalThis.fetch = async (url, o) => {
+    const body = JSON.parse(o.body); calls.push({ path: new URL(url).pathname, body });
+    return { ok: true, status: 200, json: async () => ({ code: 0, result: { accessToken: 'ephemeral-test-token', userId: body.userId } }) };
+  };
+  const post = async (body) => {
+    const res = { statusCode: 200, headers: {}, setHeader(k,v) { this.headers[k]=v; }, status(s) { this.statusCode=s; return this; }, json(j) { this.body=j; return this; } };
+    await handler({ method: 'POST', body, headers: {} }, res); return res;
+  };
+  try {
+    assert.equal((await post({ code: 'demo-out' })).statusCode, 403);
+    assert.equal((await post({ demoRole: 'out', ward: 'wardlive' })).statusCode, 400);
+    assert.equal(calls.length, 0);
+    const r = await post({ demoRole: 'out' });
+    assert.equal(r.statusCode, 200); assert.equal(r.body.publicDemo, true);
+    assert.equal(r.body.groupId, 'sspublicjudge2026'); assert.equal(r.body.userId, 'outPublicJudge2026');
+    assert.equal(r.headers['Cache-Control'], 'no-store');
+    assert.equal(JSON.stringify(r.body).includes('test-server-secret'), false);
+    assert.deepEqual(calls.find(x=>x.path.endsWith('/join')).body, {channelId:'sspublicjudge2026',userIds:['outPublicJudge2026']});
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const k of ['NEXCONN_APP_KEY','NEXCONN_APP_SECRET','SS_LEGACY_INVITES','SS_SIGNING_KEY']) { if(saved[k]===undefined) delete process.env[k]; else process.env[k]=saved[k]; }
+  }
+});
