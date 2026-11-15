@@ -59,3 +59,8 @@ Vercel serverless functions in `api/` plus the Vite client in `dist/`. Set the e
 ## Status
 
 MVP plus personal access keys. See limits above.
+
+## Public fictional judge demo (November 2026)
+The landing page has outgoing and incoming demo buttons. They ask `/api/session` for a fixed public-demo grant: only two shared demo identities, only `sspublicjudge2026`, with no caller-selected ward, name or identity. The ordinary access-key branch and existing wards are unchanged. No existing key or secret is embedded in the page, URL or document. Only the normal ephemeral Nexconn session token is returned to the requesting browser, with `Cache-Control: no-store`.
+
+Anyone can operate both demo roles and see or change this shared fictional ward. Never enter real patient or personal data. Open two tabs to test the two roles. New public demo sessions close after 4 December 2026 UTC, and `SS_PUBLIC_DEMO=0` disables new demo entry after redeployment. Neither stops already-issued Nexconn sessions: provider-side token expiry, group removal and ban are needed to end existing access. This is a public synthetic demonstration, not a protected clinical workspace. No real-user traction is inferred from its shared identities.
