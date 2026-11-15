@@ -24,16 +24,30 @@ function renderLogin(err = '') {
       <button>Enter ward</button>
       <p class="err" role="alert">${esc(err)}</p>
     </form>
+    <section class="demo-entry" aria-label="Public fictional demo">
+      <h2>Try the fictional judge demo</h2>
+      <p>No key needed. Anyone can use either shared role in a separate fictional ward. Never enter real patient or personal data. Normal wards still require an access key.</p>
+      <button type="button" data-demo="out">Try outgoing role</button>
+      <button type="button" data-demo="in">Try incoming role</button>
+      <p class="hint">For two-role testing, open this page in two tabs and choose one role in each. New demo entry closes after 4 December 2026 (UTC).</p>
+    </section>
   </main>`;
-  $('#lf').onsubmit = async (e) => {
+  $('#lf').onsubmit = (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const btn = e.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Connecting...';
+    connectSession({ name: f.get('name'), code: f.get('code') }, e.target.querySelector('button'));
+  };
+  document.querySelectorAll('[data-demo]').forEach((btn) => { btn.onclick = () => connectSession({ demoRole: btn.dataset.demo }, btn); });
+}
+
+async function connectSession(body, btn) {
+    document.querySelectorAll('.login button').forEach((b) => { b.disabled = true; });
+    btn.textContent = 'Connecting...';
     try {
-      const r = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: f.get('name'), code: f.get('code') }) });
+      const r = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const s = await r.json();
       if (!r.ok) throw new Error(s.error || 'could not sign in');
-      me = { userId: s.userId, name: s.name, role: s.role };
+      me = { userId: s.userId, name: s.name, role: s.role, publicDemo: s.publicDemo === true };
       if (typeof s.serverNow === 'number') skew = Date.now() - s.serverNow;
       transport = await createTransport(s);
       transport.onStatus?.(async (x) => {
@@ -50,7 +64,6 @@ function renderLogin(err = '') {
         catch { if (!loaded && n === all.length - 1) { notice = 'Could not load earlier cards. What you see may be incomplete - reload the page.'; render(); } }
       }, ms));
     } catch (err) { renderLogin(err.message); }
-  };
 }
 
 async function send(payload) {
@@ -74,6 +87,7 @@ function render() {
   if (!built) {
     built = true;
     app.innerHTML = `${BANNER}
+    ${me.publicDemo ? '<div class="banner" role="note"><b>Public fictional judge ward.</b> Both role identities are shared by all visitors. Changes are visible to other demo visitors. No real data. <a href="/" target="_blank" rel="noopener">Open the other role in a new tab</a> · <a href="/">Leave demo / access normal ward</a></div>' : ''}
     <header><b>ShiftSafe</b><span class="mode">${esc(transport.mode === 'nexconn' ? 'Nexconn Chat SDK' : 'local demo relay')}</span><span id="net"></span>
       <span class="who">${esc(me.name)} · ${me.role === 'out' ? 'outgoing' : 'incoming'}</span></header>
     <div id="notice" role="alert"></div>
