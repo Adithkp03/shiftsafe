@@ -62,3 +62,14 @@ export function authenticate({ body, env, legacy, roleForCode, now = Date.now() 
   return { ok: true, role: grant.role, ward: grant.ward, name: String(body.name).trim().slice(0, 30), userId: grant.role + clean, kind: 'shared-invite' };
 }
 export const legacyEnabled = (env) => String(env.SS_LEGACY_INVITES ?? '1') !== '0';
+
+// Public, fictional judge ward only. Never accepts an identity or ward from the visitor.
+// Cutoff stops NEW sessions; existing provider tokens require provider-side revocation.
+export const PUBLIC_DEMO_END = Date.parse('2026-12-04T23:59:59Z');
+export function publicDemoGrant(body, now = Date.now(), env = {}) {
+  if (!body || !Object.hasOwn(body, 'demoRole')) return null;
+  if (env.SS_PUBLIC_DEMO === '0' || now >= PUBLIC_DEMO_END) return { ok: false, status: 403, error: 'Public demo entry is closed' };
+  if (Object.keys(body).length !== 1 || !['out', 'in'].includes(body.demoRole)) return { ok: false, status: 400, error: 'Invalid demo request' };
+  const role = body.demoRole;
+  return { ok: true, role, ward: 'publicjudge2026', userId: role === 'out' ? 'outPublicJudge2026' : 'inPublicJudge2026', name: role === 'out' ? 'Demo outgoing' : 'Demo incoming', kind: 'public-demo' };
+}
